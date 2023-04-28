@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "lib": [
+      "es2020",
+      "es5",
+      "dom"
+    ],
+    "preserveWatchOutput": true,
+    "pretty": false,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "module": "esnext",
+    "moduleResolution": "node",
+    "target": "es2020",
+    "noImplicitAny": false,
+    "esModuleInterop": true,
+    "sourceMap": true,
+    "outDir": "./lib",
+    "declaration": true,
+  },
+  "include": [
+    "src.ts/*"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
