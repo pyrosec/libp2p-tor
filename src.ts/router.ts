@@ -160,15 +160,31 @@ export class Router extends Libp2pWrapped {
     }).encode();
     const stream = await this.dialProtocol(keys.hops[0], "/tor/1.0.0/message");
     pipe([cell], encode(), stream.sink);
-    const returnCell = await pipe(stream.source, decode(), async (source) => {
-      let _r: Uint8Array;
-      //TODO: fix these declarations across the project
-      for await (const data of source) {
-        _r = data.subarray();
+    const returnCellRaw = await pipe(
+      stream.source,
+      decode(),
+      async (source) => {
+        let _r: Uint8Array;
+        //TODO: fix these declarations across the project
+        for await (const data of source) {
+          _r = data.subarray();
+        }
+        return _r;
       }
-      return _r;
-    });
-    Cell.from(returnCell);
+    );
+    const returnRelayCell = this.decodeReturnCell(
+      Cell.from(returnCellRaw),
+      keys.aes
+    );
+    //TODO: check hash length and check if it matches
+  }
+
+  async decodeReturnCell(returnCell: Cell, aes: crypto.aes.AESCipher[]) {
+    const returnData = await aes.reduce(async (a, _aes) => {
+      return await _aes.decrypt(await a);
+    }, Promise.resolve(returnCell.data as Uint8Array));
+    const returnRelayCell = RelayCell.from(returnData);
+    return returnRelayCell;
   }
 
   async begin(peer: string = "", circuitId: number = null) {
