@@ -19,7 +19,13 @@ import type { PeerInfo } from "@libp2p/interface-peer-info";
 
 type HmacType = Awaited<ReturnType<typeof crypto.hmac.create>>;
 const rsa = crypto.keys.supportedKeys.rsa;
-
+type Key = {
+  ecdhKeys: ECDHKey[];
+  hops: Multiaddr[];
+  keys: Uint8Array[];
+  aes: crypto.aes.AESCipher[];
+  hmac: HmacType[];
+};
 export class Router extends Libp2pWrapped {
   public registries: Multiaddr[];
   public advertiseKey: PrivateKey;
@@ -31,16 +37,7 @@ export class Router extends Libp2pWrapped {
     id: string;
     addr: Multiaddr;
   }[];
-  public keys: Record<
-    number,
-    {
-      ecdhKeys: ECDHKey[];
-      hops: Multiaddr[];
-      keys: Uint8Array[];
-      aes: crypto.aes.AESCipher[];
-      hmac: HmacType[];
-    }
-  >;
+  public keys: Record<number, Key>;
 
   constructor(registries: Multiaddr[]) {
     super();
@@ -172,19 +169,24 @@ export class Router extends Libp2pWrapped {
         return _r;
       }
     );
-    const returnRelayCell = this.decodeReturnCell(
-      Cell.from(returnCellRaw),
-      keys.aes
-    );
-    //TODO: check hash length and check if it matches
+    return (await this.decodeReturnCell(Cell.from(returnCellRaw), keys)).data;
   }
 
-  async decodeReturnCell(returnCell: Cell, aes: crypto.aes.AESCipher[]) {
-    const returnData = await aes.reduce(async (a, _aes) => {
+  async decodeReturnCell(returnCell: Cell, keys: Key) {
+    const returnData = await keys.aes.reduce(async (a, _aes) => {
       return await _aes.decrypt(await a);
     }, Promise.resolve(returnCell.data as Uint8Array));
     const returnRelayCell = RelayCell.from(returnData);
-    return returnRelayCell;
+    if (
+      returnRelayCell.data.length == returnRelayCell.len &&
+      (await keys.hmac[0].digest(returnRelayCell.data)).equals(
+        returnRelayCell.digest
+      )
+    ) {
+      return returnRelayCell;
+    } else {
+      throw new Error("digest doesnt match");
+    }
   }
 
   async begin(peer: string = "", circuitId: number = null) {
