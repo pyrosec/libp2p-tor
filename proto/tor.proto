@@ -1,0 +1,21 @@
+
+syntax = "proto3";
+package ="libp2p-tor";
+
+message KeyShare {
+  bytes key = 1;
+}
+
+enum CellCommand {
+  PADDING = 1;
+  CREATE = 2;
+  DESTROY = 3;
+  RELAY = 4;
+  CREATED = 5;
+}
+
+message Cell {
+  CellCommand command = 1;
+  uint32 circuitId = 2;
+  bytes data = 3;
+}
