@@ -1,6 +1,6 @@
 
 syntax = "proto3";
-package ="libp2p-tor";
+package libp2p_tor;
 
 message KeyShare {
   bytes key = 1;

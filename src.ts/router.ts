@@ -16,6 +16,8 @@ import type { PrivateKey } from "@libp2p/interface-keys";
 import { CID } from "multiformats/cid";
 import { sha256 } from "multiformats/hashes/sha2";
 import type { PeerInfo } from "@libp2p/interface-peer-info";
+import { pushable } from "it-pushable";
+import { protocol } from "./protocol";
 
 type HmacType = Awaited<ReturnType<typeof crypto.hmac.create>>;
 const rsa = crypto.keys.supportedKeys.rsa;
@@ -204,13 +206,16 @@ export class Router extends Libp2pWrapped {
     const encodedData = await [...keys.aes].reverse().reduce(async (a, aes) => {
       return await aes.encrypt(await a);
     }, Promise.resolve(relayCell));
-    const cell = new Cell({
-      command: CellCommand.RELAY,
-      circuitId,
-      data: encodedData,
-    }).encode();
+    const messages = pushable();
     const stream = await this.dialProtocol(keys.hops[0], "/tor/1.0.0/message");
-    pipe([cell], encode(), stream.sink);
+    pipe(messages, encode(), stream.sink);
+    messages.push(
+      protocol.Cell.encode({
+        command: CellCommand.RELAY,
+        circuitId,
+        data: encodedData,
+      }).finish()
+    );
     const res = await pipe(stream.source, decode(), async (source) => {
       let result: Uint8Array;
       for await (const data of source) {
@@ -220,7 +225,7 @@ export class Router extends Libp2pWrapped {
     });
     const decodedResult = await keys.aes.reduce(async (a, aes) => {
       return await aes.decrypt(await a);
-    }, Promise.resolve(Cell.from(res).data as Uint8Array));
+    }, Promise.resolve(protocol.Cell.decode(res).data as Uint8Array));
     const resultCell = RelayCell.from(decodedResult);
     if (resultCell.command == RelayCellCommand.END)
       throw new Error("Couldn't begin the circuit");

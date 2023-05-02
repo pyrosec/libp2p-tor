@@ -2,24 +2,24 @@ import { arrayify } from "@ethersproject/bytes";
 import { Buffer } from "node:buffer";
 
 export enum CellCommand {
-  PADDING,
-  CREATE,
-  DESTROY,
-  RELAY,
-  CREATED,
+  PADDING = 1,
+  CREATE = 2,
+  DESTROY = 3,
+  RELAY = 4,
+  CREATED = 5,
 }
 
 export enum RelayCellCommand {
-  DATA,
-  BEGIN,
-  END,
-  TEARDOWN,
-  CONNECTED,
-  EXTEND,
-  TRUNCATE,
-  SENDME,
-  DROP,
-  EXTENDED,
+  DATA = 1,
+  BEGIN = 2,
+  END = 3,
+  TEARDOWN = 4,
+  CONNECTED = 5,
+  EXTEND = 6,
+  TRUNCATE = 7,
+  SENDME = 8,
+  DROP = 9,
+  EXTENDED = 10,
 }
 
 interface RelayCellLike {

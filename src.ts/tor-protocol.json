@@ -1,0 +1,41 @@
+{
+  "nested": {
+    "libp2p_tor": {
+      "nested": {
+        "KeyShare": {
+          "fields": {
+            "key": {
+              "type": "bytes",
+              "id": 1
+            }
+          }
+        },
+        "CellCommand": {
+          "values": {
+            "PADDING": 1,
+            "CREATE": 2,
+            "DESTROY": 3,
+            "RELAY": 4,
+            "CREATED": 5
+          }
+        },
+        "Cell": {
+          "fields": {
+            "command": {
+              "type": "CellCommand",
+              "id": 1
+            },
+            "circuitId": {
+              "type": "uint32",
+              "id": 2
+            },
+            "data": {
+              "type": "bytes",
+              "id": 3
+            }
+          }
+        }
+      }
+    }
+  }
+}
