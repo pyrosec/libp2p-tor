@@ -196,7 +196,7 @@ export class Proxy extends Libp2pWrapped {
           }).encode()
         ),
         circuitId,
-      }).encode();
+      });
     }
     return new Cell({
       command: CellCommand.RELAY,

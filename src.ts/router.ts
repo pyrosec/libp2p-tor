@@ -51,7 +51,6 @@ export class Router extends Libp2pWrapped {
     const circId = await this.create();
     await Array.from(new Array(length - 1)).reduce(async (a) => {
       await a;
-      console.log("calling extend");
       return this.extend(circId);
     }, Promise.resolve());
   }
@@ -88,22 +87,17 @@ export class Router extends Libp2pWrapped {
       .reduce(async (a, aes, i) => {
         return await aes.encrypt(await a);
       }, Promise.resolve(_relay));
-    const relay = new Cell({
-      circuitId: circId,
-      command: CellCommand.RELAY,
-      data: encryptedRelay,
-    }).encode();
     const proxy = this.keys[circId].hops[0];
-    const stream = await this.dialProtocol(proxy, "/tor/1.0.0/message");
-    pipe([relay], encode(), stream.sink);
-    const returnCell = await pipe(stream.source, decode(), async (source) => {
-      let _returnData: Uint8Array;
-      for await (const data of source) {
-        _returnData = data.subarray();
-      }
-      return Cell.from(_returnData);
+    const ret = await this.pipeTo({
+      peerId: proxy,
+      protocol: "/tor/1.0.0/message",
+      data: protocol.Cell.encode({
+        command: CellCommand.RELAY,
+        circuitId: circId,
+        data: encryptedRelay,
+      }).finish(),
     });
-
+    const returnCell = Cell.from(ret);
     const returnRelayCell = RelayCell.from(
       await this.keys[`${circId}`].aes.reduce(async (a, aes) => {
         return await aes.decrypt(await a);
@@ -206,24 +200,14 @@ export class Router extends Libp2pWrapped {
     const encodedData = await [...keys.aes].reverse().reduce(async (a, aes) => {
       return await aes.encrypt(await a);
     }, Promise.resolve(relayCell));
-    const messages = pushable();
-    const stream = await this.dialProtocol(keys.hops[0], "/tor/1.0.0/message");
-    pipe(messages, encode(), stream.sink);
-    messages
-      .push(
-        protocol.Cell.encode({
-          command: CellCommand.RELAY,
-          circuitId,
-          data: encodedData,
-        }).finish()
-      )
-      .end();
-    const res = await pipe(stream.source, decode(), async (source) => {
-      let result: Uint8Array;
-      for await (const data of source) {
-        result = data.subarray();
-      }
-      return result;
+    const res = await this.pipeTo({
+      peerId: keys.hops[0],
+      data: protocol.Cell.encode({
+        command: CellCommand.RELAY,
+        circuitId,
+        data: encodedData,
+      }).finish(),
+      protocol: "/tor/1.0.0/message",
     });
     const decodedResult = await keys.aes.reduce(async (a, aes) => {
       return await aes.decrypt(await a);
@@ -238,26 +222,16 @@ export class Router extends Libp2pWrapped {
     const { genSharedKey, key } = await generateEphemeralKeyPair("P-256");
     const proxy = this.proxies[0];
     const encryptedKey = Uint8Array.from(await proxy.publicKey.encrypt(key));
-    const messages = pushable();
-    const stream = await this.dialProtocol(proxy.addr, "/tor/1.0.0/message");
-    pipe(messages, encode(), stream.sink);
-    messages
-      .push(
-        protocol.Cell.encode({
-          command: CellCommand.CREATE,
-          data: encryptedKey,
-          ciruitId: circId,
-        }).finish()
-      )
-      .end();
-    const cell = await pipe(stream.source, decode(), async (source) => {
-      let _cell: Cell;
-      for await (const data of source) {
-        _cell = Cell.from(Buffer.from(data.subarray()));
-        break;
-      }
-      return _cell;
+    const ret = await this.pipeTo({
+      peerId: proxy.addr,
+      protocol: "/tor/1.0.0/message",
+      data: protocol.Cell.encode({
+        command: CellCommand.CREATE,
+        data: encryptedKey,
+        ciruitId: circId,
+      }).finish(),
     });
+    const cell = Cell.from(ret);
     const proxyEcdhKey = (cell.data as Uint8Array).slice(0, 65);
     const digest = (cell.data as Uint8Array).slice(65, 65 + 32);
     const sharedKey = await genSharedKey(proxyEcdhKey);

@@ -8,6 +8,15 @@ import { EventEmitter } from "node:events";
 import type { StreamHandler } from "@libp2p/interface-registrar";
 import { PeerId } from "@libp2p/interface-peer-id";
 import { Multiaddr } from "@multiformats/multiaddr";
+import { pushable } from "it-pushable";
+import { encode, decode } from "it-length-prefixed";
+import { pipe } from "it-pipe";
+
+interface PipeToInput {
+  peerId: Multiaddr | PeerId;
+  protocol: string;
+  data: Uint8Array;
+}
 
 export async function createLibp2pNode(
   options: Libp2pOptions
@@ -35,5 +44,24 @@ export class Libp2pWrapped extends EventEmitter {
   dialProtocol(peerId: Multiaddr | PeerId, protocol: string, options = {}) {
     //@ts-ignore
     return this._libp2p.dialProtocol(peerId, protocol, options);
+  }
+
+  // pipes to protocol and expects a response
+  async pipeTo(input: PipeToInput) {
+    const messages = pushable();
+    const stream = await this.dialProtocol(input.peerId, input.protocol);
+
+    pipe(messages, encode(), stream.sink);
+    messages.push(input.data).end();
+
+    return await pipe(stream.source, decode(), async (source) => {
+      let ret: Uint8Array;
+      // breaks on first iteration
+      for await (const data of source) {
+        ret = data.subarray();
+        break;
+      }
+      return ret;
+    });
   }
 }
