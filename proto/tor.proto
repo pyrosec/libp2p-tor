@@ -2,9 +2,11 @@
 syntax = "proto3";
 package libp2p_tor;
 
-message KeyShare {
-  bytes key = 1;
+message BaseMessage {
+  bytes content = 1;
+  string type = 2;
 }
+
 
 enum CellCommand {
   PADDING = 1;

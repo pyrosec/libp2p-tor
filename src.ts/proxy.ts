@@ -56,7 +56,35 @@ export class Proxy extends Libp2pWrapped {
     await this.register();
     await this.handle("/tor/1.0.0/message", this.handleTorMessage);
     await this.handle("/tor/1.0.0/advertise", this.handleAdvertise);
+    await this.handle("/tor/1.0.0/baseMessage", this.handleBaseMessage);
   }
+
+  handleBaseMessage: StreamHandler = async ({ stream }) => {
+    const data = await pipe(stream.source, decode(), async (source) => {
+      let _ret: Uint8Array;
+      for await (const _data of source) {
+        _ret = _data.subarray();
+        break;
+      }
+      return _ret;
+    });
+    const baseMessage = protocol.BaseMessage.decode(data);
+    let content: any;
+    switch (baseMessage["type"]) {
+      default:
+        content = toString(baseMessage["content"]);
+        break;
+    }
+    if (content == "BEGIN") {
+      await this.sendTorCell({
+        stream,
+        data: protocol.BaseMessage.encode({
+          type: "string",
+          content: fromString("BEGUN"),
+        }),
+      });
+    }
+  };
 
   handleAdvertise: StreamHandler = async ({ stream }) => {
     const pubKey = await pipe(stream.source, decode(), async (source) => {

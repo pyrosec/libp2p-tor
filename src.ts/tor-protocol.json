@@ -2,9 +2,9 @@
   "nested": {
     "libp2p_tor": {
       "nested": {
-        "KeyShare": {
+        "BaseMessage": {
           "fields": {
-            "key": {
+            "content": {
               "type": "bytes",
               "id": 1
             }
