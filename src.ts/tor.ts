@@ -1,5 +1,6 @@
 import { arrayify } from "@ethersproject/bytes";
 import { Buffer } from "node:buffer";
+import { protocol } from "./protocol";
 
 export enum CellCommand {
   PADDING = 1,
@@ -92,6 +93,15 @@ export class Cell {
     );
     data.copy(result, 3, 0, 509);
     return arrayify(result);
+  }
+
+  static decode(data: any) {
+    return new Cell(
+      protocol.Cell.toObject(protocol.Cell.decode(data), {
+        enums: Number,
+        bytes: Uint8Array,
+      })
+    );
   }
 
   static from(cell: Uint8Array): Cell {
