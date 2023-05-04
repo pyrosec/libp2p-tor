@@ -13,7 +13,6 @@ import type { PrivateKey } from "@libp2p/interface-keys";
 import { iv } from "./constants";
 import { CID } from "multiformats/cid";
 import { sha256 } from "multiformats/hashes/sha2";
-import { peerIdFromString } from "@libp2p/peer-id";
 import { protocol } from "./protocol";
 
 const createHmac = crypto.hmac.create;
@@ -81,66 +80,54 @@ export class Proxy extends Libp2pWrapped {
       }
       return Cell.decode(ret);
     });
-    let returnCell: Uint8Array;
+    let returnCell: any;
     if (cell.command == CellCommand.CREATE) {
       const cellData: Uint8Array = Uint8Array.from(
         //@ts-ignore
         await this.torKey.decrypt((cell.data as Uint8Array).slice(0, 128))
       );
-      returnCell = new Cell({
+      returnCell = protocol.Cell.encode({
         circuitId: cell.circuitId,
         command: CellCommand.CREATED,
         data: await this.handleCreateCell(cell.circuitId, cellData),
-      }).encode();
+      }).finish();
     } else if (cell.command == CellCommand.RELAY) {
-      console.log("relay");
       const aes = this.keys[`${cell.circuitId}`].aes;
       const nextHop = this.keys[`${cell.circuitId}`].nextHop;
       if (nextHop == undefined) {
-        console.log("next hop not defined");
-        returnCell = await this.handleRelayCell({
-          circuitId: cell.circuitId,
-          relayCell: RelayCell.from(await aes.decrypt(cell.data as Uint8Array)),
-        });
+        returnCell = (
+          await this.handleRelayCell({
+            circuitId: cell.circuitId,
+            relayCell: RelayCell.from(
+              await aes.decrypt(cell.data as Uint8Array)
+            ),
+          })
+        ).encode();
       } else {
-        console.log("sending to next hop");
         const relayCell = RelayCell.from(
           await aes.decrypt(cell.data as Uint8Array)
         );
-        const nextHopStream = await this.dialProtocol(
-          nextHop.multiaddr,
-          "/tor/1.0.0/message"
-        );
-        pipe(
-          [
-            new Cell({
-              circuitId: nextHop.circuitId,
-              data: relayCell.encode(),
-              command: CellCommand.RELAY,
-            }).encode(),
-          ],
-          encode(),
-          nextHopStream.sink
-        );
-        const nextCell = await pipe(
-          nextHopStream.source,
-          decode(),
-          async (source) => {
-            let _cell: Cell;
-            for await (const data of source) {
-              _cell = Cell.from(data.subarray());
-            }
-            return _cell;
-          }
-        );
-        returnCell = new Cell({
+        const nextCellEncoded = await this.sendTorCellWithResponse({
+          peerId: nextHop.multiaddr,
+          protocol: "/tor/1.0.0/message",
+          data: protocol.Cell.encode({
+            circuitId: nextHop.circuitId,
+            data: relayCell.encode(),
+            command: CellCommand.RELAY,
+          }),
+        });
+        const nextCell = Cell.decode(nextCellEncoded);
+        returnCell = protocol.Cell.encode({
           command: CellCommand.RELAY,
           circuitId: cell.circuitId,
           data: await aes.encrypt(nextCell.data as Uint8Array),
-        }).encode();
+        }).finish();
       }
     }
-    pipe([returnCell], encode(), stream.sink);
+    await this.sendTorCell({
+      stream,
+      data: returnCell,
+    });
   };
 
   async handleRelayCell({
@@ -198,7 +185,7 @@ export class Proxy extends Libp2pWrapped {
           }).encode()
         ),
         circuitId,
-      }).encode();
+      });
     }
     return new Cell({
       command: CellCommand.RELAY,
@@ -212,7 +199,7 @@ export class Proxy extends Libp2pWrapped {
           streamId: circuitId,
         }).encode()
       ),
-    }).encode();
+    });
   }
   async handleRelayBegin({
     circuitId,
@@ -250,7 +237,7 @@ export class Proxy extends Libp2pWrapped {
           }).encode()
         ),
         circuitId,
-      }).encode();
+      });
     } else {
       return new Cell({
         command: CellCommand.RELAY,
@@ -264,7 +251,7 @@ export class Proxy extends Libp2pWrapped {
           }).encode()
         ),
         circuitId,
-      }).encode();
+      });
     }
   }
   async handleRelayExtend({
@@ -281,25 +268,17 @@ export class Proxy extends Libp2pWrapped {
       multiaddr: multiAddr,
       circuitId: Buffer.from(crypto.randomBytes(16)).readUint16BE(),
     });
-    const stream = await this.dialProtocol(multiAddr, "/tor/1.0.0/message");
-    pipe(
-      [
-        new Cell({
+    const returnData = Cell.decode(
+      await this.sendTorCellWithResponse({
+        peerId: multiAddr,
+        protocol: "/tor/1.0.0/message",
+        data: new Cell({
           command: CellCommand.CREATE,
           data: encryptedKey,
           circuitId: hop.circuitId,
         }).encode(),
-      ],
-      encode(),
-      stream.sink
+      })
     );
-    const returnData = await pipe(stream.source, decode(), async (source) => {
-      let result: Uint8Array;
-      for await (const data of source) {
-        result = data.subarray();
-      }
-      return Cell.from(result);
-    });
     const returnDigest = await hmac.digest(returnData.data as Uint8Array);
     return new Cell({
       circuitId,
@@ -313,7 +292,7 @@ export class Proxy extends Libp2pWrapped {
           digest: returnDigest,
         }).encode()
       ),
-    }).encode();
+    });
   }
 
   async handleCreateCell(circuitId: number, cellData: Uint8Array) {

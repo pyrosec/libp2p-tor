@@ -88,7 +88,7 @@ export class Router extends Libp2pWrapped {
         return await aes.encrypt(await a);
       }, Promise.resolve(_relay));
     const proxy = this.keys[circId].hops[0];
-    const ret = await this.pipeTo({
+    const ret = await this.sendTorCellWithResponse({
       peerId: proxy,
       protocol: "/tor/1.0.0/message",
       data: protocol.Cell.encode({
@@ -200,7 +200,7 @@ export class Router extends Libp2pWrapped {
     const encodedData = await [...keys.aes].reverse().reduce(async (a, aes) => {
       return await aes.encrypt(await a);
     }, Promise.resolve(relayCell));
-    const res = await this.pipeTo({
+    const res = await this.sendTorCellWithResponse({
       peerId: keys.hops[0],
       data: protocol.Cell.encode({
         command: CellCommand.RELAY,
@@ -222,7 +222,7 @@ export class Router extends Libp2pWrapped {
     const { genSharedKey, key } = await generateEphemeralKeyPair("P-256");
     const proxy = this.proxies[0];
     const encryptedKey = Uint8Array.from(await proxy.publicKey.encrypt(key));
-    const ret = await this.pipeTo({
+    const ret = await this.sendTorCellWithResponse({
       peerId: proxy.addr,
       protocol: "/tor/1.0.0/message",
       data: protocol.Cell.encode({

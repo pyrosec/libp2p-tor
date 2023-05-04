@@ -6,16 +6,26 @@ import { mplex } from "@libp2p/mplex";
 import { Noise } from "@chainsafe/libp2p-noise";
 import { EventEmitter } from "node:events";
 import type { StreamHandler } from "@libp2p/interface-registrar";
+import type { Stream } from "@libp2p/interface-connection";
 import { PeerId } from "@libp2p/interface-peer-id";
 import { Multiaddr } from "@multiformats/multiaddr";
 import { pushable } from "it-pushable";
 import { encode, decode } from "it-length-prefixed";
 import { pipe } from "it-pipe";
 
-interface PipeToInput {
+type SendTorCellInput = {
   peerId: Multiaddr | PeerId;
   protocol: string;
+  data: any;
+};
+
+type SendTorCellInputWithStream = {
+  stream: Stream;
   data: Uint8Array;
+};
+
+interface HandleTorCellInput {
+  stream: Stream;
 }
 
 export async function createLibp2pNode(
@@ -47,12 +57,10 @@ export class Libp2pWrapped extends EventEmitter {
   }
 
   // pipes to protocol and expects a response
-  async pipeTo(input: PipeToInput) {
-    const messages = pushable();
-    const stream = await this.dialProtocol(input.peerId, input.protocol);
-
-    pipe(messages, encode(), stream.sink);
-    messages.push(input.data).end();
+  async sendTorCellWithResponse(
+    input: SendTorCellInput | SendTorCellInputWithStream
+  ) {
+    const stream = await this.sendTorCell(input);
 
     return await pipe(stream.source, decode(), async (source) => {
       let ret: Uint8Array;
@@ -64,4 +72,19 @@ export class Libp2pWrapped extends EventEmitter {
       return ret;
     });
   }
+
+  async sendTorCell(input: SendTorCellInput | SendTorCellInputWithStream) {
+    const messages = pushable();
+    let stream: Stream;
+    if ("stream" in input) {
+      stream = input.stream;
+    } else {
+      stream = await this.dialProtocol(input.peerId, input.protocol);
+    }
+    pipe(messages, encode(), stream.sink);
+    messages.push(input.data).end();
+    return stream;
+  }
+
+  async handleTorCell() {}
 }

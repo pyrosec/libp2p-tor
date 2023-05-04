@@ -84,7 +84,7 @@ export class Cell {
     this.command = o.command;
     this.data = o.data;
   }
-  encode(): Uint8Array {
+  encode_raw(): Uint8Array {
     const result = Buffer.alloc(512);
     result.writeUInt16BE(this.circuitId, 0);
     result.writeUInt8(this.command, 2);
@@ -95,6 +95,13 @@ export class Cell {
     return arrayify(result);
   }
 
+  encode() {
+    return protocol.Cell.encode({
+      circuitId: this.circuitId,
+      data: this.data,
+      command: this.command,
+    }).finish();
+  }
   static decode(data: any) {
     return new Cell(
       protocol.Cell.toObject(protocol.Cell.decode(data), {
