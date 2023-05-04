@@ -14,6 +14,7 @@ import { iv } from "./constants";
 import { CID } from "multiformats/cid";
 import { sha256 } from "multiformats/hashes/sha2";
 import { peerIdFromString } from "@libp2p/peer-id";
+import { protocol } from "./protocol";
 
 const createHmac = crypto.hmac.create;
 
@@ -73,11 +74,12 @@ export class Proxy extends Libp2pWrapped {
 
   handleTorMessage: StreamHandler = async ({ stream }) => {
     const cell = await pipe(stream.source, decode(), async (source) => {
-      let _cell: Cell;
+      let ret: Uint8Array;
       for await (const data of source) {
-        _cell = Cell.from(data.subarray());
+        ret = data.subarray();
+        break;
       }
-      return _cell;
+      return Cell.decode(ret);
     });
     let returnCell: Uint8Array;
     if (cell.command == CellCommand.CREATE) {
@@ -196,7 +198,7 @@ export class Proxy extends Libp2pWrapped {
           }).encode()
         ),
         circuitId,
-      });
+      }).encode();
     }
     return new Cell({
       command: CellCommand.RELAY,
@@ -210,7 +212,7 @@ export class Proxy extends Libp2pWrapped {
           streamId: circuitId,
         }).encode()
       ),
-    });
+    }).encode();
   }
   async handleRelayBegin({
     circuitId,
