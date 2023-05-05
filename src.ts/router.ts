@@ -16,8 +16,8 @@ import type { PrivateKey } from "@libp2p/interface-keys";
 import { CID } from "multiformats/cid";
 import { sha256 } from "multiformats/hashes/sha2";
 import type { PeerInfo } from "@libp2p/interface-peer-info";
-import { pushable } from "it-pushable";
 import { protocol } from "./protocol";
+import { PROTOCOLS } from "./tor";
 
 type HmacType = Awaited<ReturnType<typeof crypto.hmac.create>>;
 const rsa = crypto.keys.supportedKeys.rsa;
@@ -91,20 +91,21 @@ export class Router extends Libp2pWrapped {
     const proxy = this.keys[circId].hops[0];
     const ret = await this.sendTorCellWithResponse({
       peerId: proxy,
-      protocol: "/tor/1.0.0/message",
+      protocol: PROTOCOLS.message,
       data: protocol.Cell.encode({
         command: CellCommand.RELAY,
         circuitId: circId,
         data: encryptedRelay,
       }).finish(),
     });
-    console.log(ret);
     const returnCell = Cell.decode(ret);
     const returnRelayCell = RelayCell.from(
       await this.keys[`${circId}`].aes.reduce(async (a, aes) => {
         return await aes.decrypt(await a);
       }, Promise.resolve(returnCell.data as Uint8Array))
     );
+    if (returnRelayCell.command == RelayCellCommand.END)
+      throw new Error("error extending");
     const cellKey = returnRelayCell.data.subarray(0, 65);
     const cellDigest = returnRelayCell.data.subarray(65, 65 + 32);
     const cellSharedKey = await genSharedKey(cellKey);
@@ -153,7 +154,7 @@ export class Router extends Libp2pWrapped {
       circuitId,
       data: encodedData,
     }).encode();
-    const stream = await this.dialProtocol(keys.hops[0], "/tor/1.0.0/message");
+    const stream = await this.dialProtocol(keys.hops[0], PROTOCOLS.message);
     pipe([cell], encode(), stream.sink);
     const returnCellRaw = await pipe(
       stream.source,
@@ -209,7 +210,7 @@ export class Router extends Libp2pWrapped {
         circuitId,
         data: encodedData,
       }).finish(),
-      protocol: "/tor/1.0.0/message",
+      protocol: PROTOCOLS.message,
     });
     const decodedResult = await keys.aes.reduce(async (a, aes) => {
       return await aes.decrypt(await a);
@@ -226,7 +227,7 @@ export class Router extends Libp2pWrapped {
     const encryptedKey = Uint8Array.from(await proxy.publicKey.encrypt(key));
     const ret = await this.sendTorCellWithResponse({
       peerId: proxy.addr,
-      protocol: "/tor/1.0.0/message",
+      protocol: PROTOCOLS.message,
       data: protocol.Cell.encode({
         command: CellCommand.CREATE,
         data: encryptedKey,
@@ -260,7 +261,7 @@ export class Router extends Libp2pWrapped {
     const points = await this.pickAdvertisePoints();
     await points.reduce(async (_a, p) => {
       await _a;
-      const stream = await this.dialProtocol(p, "/tor/1.0.0/advertise");
+      const stream = await this.dialProtocol(p, PROTOCOLS.advertise);
       await pipe([this.advertiseKey.public.bytes], encode(), stream.sink);
     }, Promise.resolve());
   }
@@ -286,7 +287,7 @@ export class Router extends Libp2pWrapped {
     >(async (results, registry) => {
       try {
         console.log("dialing registry");
-        const stream = await this.dialProtocol(registry, "/tor/1.0.0/relays");
+        const stream = await this.dialProtocol(registry, PROTOCOLS.relays);
         const _results = await pipe(
           stream.source,
           decode(),

@@ -124,3 +124,11 @@ export class Cell {
     });
   }
 }
+
+export const PROTOCOLS = {
+  message: "/tor/1.0.0/message",
+  baseMessage: "/tor/1.0.0/baseMessage",
+  advertise: "/tor/1.0.0/advertise",
+  register: "/tor/1.0.0/register",
+  relays: "/tor/1.0.0/relays",
+};

@@ -5,7 +5,13 @@ import type { ECDHKey } from "@libp2p/crypto/keys/interface";
 import { pipe } from "it-pipe";
 import { encode, decode } from "it-length-prefixed";
 import { Multiaddr, multiaddr } from "@multiformats/multiaddr";
-import { Cell, CellCommand, RelayCell, RelayCellCommand } from "./tor";
+import {
+  Cell,
+  CellCommand,
+  RelayCell,
+  RelayCellCommand,
+  PROTOCOLS,
+} from "./tor";
 import { StreamHandler } from "@libp2p/interface-registrar";
 import { fromString, equals, toString } from "uint8arrays";
 import * as crypto from "@libp2p/crypto";
@@ -54,9 +60,9 @@ export class Proxy extends Libp2pWrapped {
     await super.run(options);
     this.torKey = await crypto.keys.generateKeyPair("RSA", 1024);
     await this.register();
-    await this.handle("/tor/1.0.0/message", this.handleTorMessage);
-    await this.handle("/tor/1.0.0/advertise", this.handleAdvertise);
-    await this.handle("/tor/1.0.0/baseMessage", this.handleBaseMessage);
+    await this.handle(PROTOCOLS.message, this.handleTorMessage);
+    await this.handle(PROTOCOLS.advertise, this.handleAdvertise);
+    await this.handle(PROTOCOLS.baseMessage, this.handleBaseMessage);
   }
 
   handleBaseMessage: StreamHandler = async ({ stream }) => {
@@ -100,6 +106,7 @@ export class Proxy extends Libp2pWrapped {
   };
 
   handleTorMessage: StreamHandler = async ({ stream }) => {
+    console.log("handling tor message");
     const cell = await pipe(stream.source, decode(), async (source) => {
       let ret: Uint8Array;
       for await (const data of source) {
@@ -134,15 +141,14 @@ export class Proxy extends Libp2pWrapped {
       } else {
         const nextCellEncoded = await this.sendTorCellWithResponse({
           peerId: nextHop.multiaddr,
-          protocol: "/tor/1.0.0/message",
+          protocol: PROTOCOLS.message,
           data: protocol.Cell.encode({
             circuitId: nextHop.circuitId,
             data: await aes.decrypt(cell.data as Uint8Array),
             command: CellCommand.RELAY,
-          }),
+          }).finish(),
         });
         const nextCell = Cell.decode(nextCellEncoded);
-        console.log(nextCell);
         returnCell = protocol.Cell.encode({
           command: CellCommand.RELAY,
           circuitId: cell.circuitId,
@@ -189,7 +195,7 @@ export class Proxy extends Libp2pWrapped {
     if (this.active[circuitId]) {
       const stream = await this.dialProtocol(
         this.active[circuitId],
-        "/tor/1.0.0/baseMessage"
+        PROTOCOLS.baseMessage
       );
       pipe([relayCellData], encode(), stream.sink);
       const returnData = await pipe(stream.source, decode(), async (source) => {
@@ -236,7 +242,7 @@ export class Proxy extends Libp2pWrapped {
   }) {
     const { aes, hmac } = this.keys[`${circuitId}`];
     const addr = multiaddr(relayCellData.slice(128));
-    const stream = await this.dialProtocol(addr, "/tor/1.0.0/baseMessage");
+    const stream = await this.dialProtocol(addr, PROTOCOLS.baseMessage);
     pipe([fromString("BEGIN")], encode(), stream.sink);
     const returnData = toString(
       await pipe(stream.source, decode(), async (source) => {
@@ -297,7 +303,7 @@ export class Proxy extends Libp2pWrapped {
     const returnData = Cell.decode(
       await this.sendTorCellWithResponse({
         peerId: multiAddr,
-        protocol: "/tor/1.0.0/message",
+        protocol: PROTOCOLS.message,
         data: new Cell({
           command: CellCommand.CREATE,
           data: encryptedKey,
@@ -305,6 +311,21 @@ export class Proxy extends Libp2pWrapped {
         }).encode(),
       })
     );
+    if (returnData.command !== CellCommand.CREATED) {
+      return new Cell({
+        circuitId,
+        command: CellCommand.RELAY,
+        data: await aes.encrypt(
+          new RelayCell({
+            data: Uint8Array.from([]),
+            command: RelayCellCommand.END,
+            streamId: circuitId,
+            len: 0,
+            digest: Uint8Array.from([]),
+          }).encode()
+        ),
+      });
+    }
     const returnDigest = await hmac.digest(returnData.data as Uint8Array);
     return new Cell({
       circuitId,
@@ -344,7 +365,7 @@ export class Proxy extends Libp2pWrapped {
   async register() {
     await this.registries.reduce<any>(async (_a, registry) => {
       try {
-        const stream = await this.dialProtocol(registry, "/tor/1.0.0/register");
+        const stream = await this.dialProtocol(registry, PROTOCOLS.register);
         pipe(
           [
             fromString(
