@@ -49,6 +49,7 @@ export class Router extends Libp2pWrapped {
 
   async build(length: number = 1) {
     const circId = await this.create();
+    console.log("created 1 ");
     await Array.from(new Array(length - 1)).reduce(async (a) => {
       await a;
       return this.extend(circId);
@@ -97,7 +98,7 @@ export class Router extends Libp2pWrapped {
         data: encryptedRelay,
       }).finish(),
     });
-    const returnCell = Cell.from(ret);
+    const returnCell = Cell.decode(ret);
     const returnRelayCell = RelayCell.from(
       await this.keys[`${circId}`].aes.reduce(async (a, aes) => {
         return await aes.decrypt(await a);
@@ -228,10 +229,10 @@ export class Router extends Libp2pWrapped {
       data: protocol.Cell.encode({
         command: CellCommand.CREATE,
         data: encryptedKey,
-        ciruitId: circId,
+        circuitId: circId,
       }).finish(),
     });
-    const cell = Cell.from(ret);
+    const cell = Cell.decode(ret);
     const proxyEcdhKey = (cell.data as Uint8Array).slice(0, 65);
     const digest = (cell.data as Uint8Array).slice(65, 65 + 32);
     const sharedKey = await genSharedKey(proxyEcdhKey);
