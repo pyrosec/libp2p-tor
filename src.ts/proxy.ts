@@ -307,7 +307,9 @@ export class Proxy extends Libp2pWrapped {
         }).encode(),
       })
     );
+    console.log(returnData.data);
     const returnDigest = await hmac.digest(returnData.data as Uint8Array);
+    console.log(returnDigest);
     return new Cell({
       circuitId,
       command: CellCommand.RELAY,

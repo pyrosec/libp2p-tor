@@ -110,8 +110,9 @@ export class Router extends Libp2pWrapped {
     const cellHmac = await crypto.hmac.create("SHA256", cellSharedKey);
     const prevHmac =
       this.keys[`${circId}`].hmac[this.keys[`${circId}`].hmac.length - 1];
-    const digestInput = new Uint8Array(509);
-    digestInput.set(returnRelayCell.data);
+    const digestInput = new Uint8Array(returnRelayCell.len);
+    digestInput.set(returnRelayCell.data.slice(0, returnRelayCell.len));
+    console.log("in router", digestInput);
     if (
       !equals(
         returnRelayCell.digest,
