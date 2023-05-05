@@ -1,6 +1,4 @@
-
 syntax = "proto3";
-package libp2p_tor;
 
 message BaseMessage {
   bytes content = 1;
@@ -9,11 +7,11 @@ message BaseMessage {
 
 
 enum CellCommand {
-  PADDING = 1;
-  CREATE = 2;
-  DESTROY = 3;
-  RELAY = 4;
-  CREATED = 5;
+  PADDING = 0;
+  CREATE = 1;
+  DESTROY = 2;
+  RELAY = 3;
+  CREATED = 4;
 }
 
 message Cell {

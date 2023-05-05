@@ -3,24 +3,24 @@ import { Buffer } from "node:buffer";
 import { protocol } from "./protocol";
 
 export enum CellCommand {
-  PADDING = 1,
-  CREATE = 2,
-  DESTROY = 3,
-  RELAY = 4,
-  CREATED = 5,
+  PADDING = 0,
+  CREATE = 1,
+  DESTROY = 2,
+  RELAY = 3,
+  CREATED = 4,
 }
 
 export enum RelayCellCommand {
-  DATA = 1,
-  BEGIN = 2,
-  END = 3,
-  TEARDOWN = 4,
-  CONNECTED = 5,
-  EXTEND = 6,
-  TRUNCATE = 7,
-  SENDME = 8,
-  DROP = 9,
-  EXTENDED = 10,
+  DATA = 0,
+  BEGIN = 1,
+  END = 2,
+  TEARDOWN = 3,
+  CONNECTED = 4,
+  EXTEND = 5,
+  TRUNCATE = 6,
+  SENDME = 7,
+  DROP = 8,
+  EXTENDED = 9,
 }
 
 interface RelayCellLike {

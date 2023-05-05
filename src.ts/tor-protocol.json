@@ -1,39 +1,39 @@
 {
   "nested": {
-    "libp2p_tor": {
-      "nested": {
-        "BaseMessage": {
-          "fields": {
-            "content": {
-              "type": "bytes",
-              "id": 1
-            }
-          }
+    "BaseMessage": {
+      "fields": {
+        "content": {
+          "type": "bytes",
+          "id": 1
         },
-        "CellCommand": {
-          "values": {
-            "PADDING": 1,
-            "CREATE": 2,
-            "DESTROY": 3,
-            "RELAY": 4,
-            "CREATED": 5
-          }
+        "type": {
+          "type": "string",
+          "id": 2
+        }
+      }
+    },
+    "CellCommand": {
+      "values": {
+        "PADDING": 0,
+        "CREATE": 1,
+        "DESTROY": 2,
+        "RELAY": 3,
+        "CREATED": 4
+      }
+    },
+    "Cell": {
+      "fields": {
+        "command": {
+          "type": "CellCommand",
+          "id": 1
         },
-        "Cell": {
-          "fields": {
-            "command": {
-              "type": "CellCommand",
-              "id": 1
-            },
-            "circuitId": {
-              "type": "uint32",
-              "id": 2
-            },
-            "data": {
-              "type": "bytes",
-              "id": 3
-            }
-          }
+        "circuitId": {
+          "type": "uint32",
+          "id": 2
+        },
+        "data": {
+          "type": "bytes",
+          "id": 3
         }
       }
     }

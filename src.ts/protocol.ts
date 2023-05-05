@@ -1,7 +1,7 @@
-import * as protobuf from "protobufjs";
+import protobuf from "protobufjs";
 
-const api = require("./tor-protocol.json");
+import api from "./tor-protocol.json" assert { type: "json" };
 
-const protocol: any = protobuf.Root.fromJSON(api).nested.libp2p_tor;
+const protocol: any = protobuf.Root.fromJSON(api).nested;
 
 export { protocol };
