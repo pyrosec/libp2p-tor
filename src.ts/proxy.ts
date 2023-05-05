@@ -242,20 +242,23 @@ export class Proxy extends Libp2pWrapped {
   }) {
     const { aes, hmac } = this.keys[`${circuitId}`];
     const addr = multiaddr(relayCellData.slice(128));
-    const stream = await this.dialProtocol(addr, PROTOCOLS.baseMessage);
-    pipe([fromString("BEGIN")], encode(), stream.sink);
-    const returnData = toString(
-      await pipe(stream.source, decode(), async (source) => {
-        let result: Uint8Array;
-        for await (const data of source) {
-          result = data.subarray();
-        }
-        return result;
+    const returnData = protocol.BaseMessage.decode(
+      await this.sendTorCellWithResponse({
+        peerId: addr,
+        protocol: PROTOCOLS.baseMessage,
+        data: protocol.BaseMessage.encode({
+          type: "string",
+          content: fromString("BEGIN"),
+        }),
       })
     );
-
+    let content: any;
+    switch (returnData.type) {
+      default:
+        content = toString(returnData.content);
+    }
     const data = fromString("");
-    if (returnData == "BEGUN") {
+    if (content == "BEGUN") {
       this.active[circuitId] = addr;
       return new Cell({
         command: CellCommand.RELAY,
