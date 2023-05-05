@@ -132,19 +132,17 @@ export class Proxy extends Libp2pWrapped {
           })
         ).encode();
       } else {
-        const relayCell = RelayCell.from(
-          await aes.decrypt(cell.data as Uint8Array)
-        );
         const nextCellEncoded = await this.sendTorCellWithResponse({
           peerId: nextHop.multiaddr,
           protocol: "/tor/1.0.0/message",
           data: protocol.Cell.encode({
             circuitId: nextHop.circuitId,
-            data: relayCell.encode(),
+            data: await aes.decrypt(cell.data as Uint8Array),
             command: CellCommand.RELAY,
           }),
         });
         const nextCell = Cell.decode(nextCellEncoded);
+        console.log(nextCell);
         returnCell = protocol.Cell.encode({
           command: CellCommand.RELAY,
           circuitId: cell.circuitId,
@@ -307,9 +305,7 @@ export class Proxy extends Libp2pWrapped {
         }).encode(),
       })
     );
-    console.log(returnData.data);
     const returnDigest = await hmac.digest(returnData.data as Uint8Array);
-    console.log(returnDigest);
     return new Cell({
       circuitId,
       command: CellCommand.RELAY,

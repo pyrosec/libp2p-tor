@@ -98,6 +98,7 @@ export class Router extends Libp2pWrapped {
         data: encryptedRelay,
       }).finish(),
     });
+    console.log(ret);
     const returnCell = Cell.decode(ret);
     const returnRelayCell = RelayCell.from(
       await this.keys[`${circId}`].aes.reduce(async (a, aes) => {
@@ -112,7 +113,6 @@ export class Router extends Libp2pWrapped {
       this.keys[`${circId}`].hmac[this.keys[`${circId}`].hmac.length - 1];
     const digestInput = new Uint8Array(returnRelayCell.len);
     digestInput.set(returnRelayCell.data.slice(0, returnRelayCell.len));
-    console.log("in router", digestInput);
     if (
       !equals(
         returnRelayCell.digest,
