@@ -47,7 +47,7 @@ describe("tor", () => {
   });
   it("begin: should begin the data relay", async () => {
     await router.build(3);
-    await router.begin();
+    await router.begin(proxies[4]._libp2p.getMultiaddrs()[0]);
   });
 
   it("rendezvous: should test rendezvous points", async () => {

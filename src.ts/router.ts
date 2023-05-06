@@ -188,11 +188,11 @@ export class Router extends Libp2pWrapped {
     }
   }
 
-  async begin(peer: string = "", circuitId: number = null) {
+  async begin(peer: Multiaddr, circuitId: number = null) {
     if (!circuitId) circuitId = Number(Object.keys(this.keys)[0]);
     const keys = this.keys[`${circuitId}`];
     const hmacLast = keys.hmac[keys.hmac.length - 1];
-    const data = fromString(peer);
+    const data = peer.bytes;
     const relayCell = new RelayCell({
       command: RelayCellCommand.BEGIN,
       data,
@@ -278,7 +278,7 @@ export class Router extends Libp2pWrapped {
       [Symbol.asyncIterator]();
     const peer: PeerInfo = (await peers.next()).value;
     await this.build(3);
-    await this.begin(peer.multiaddrs[0].toString());
+    await this.begin(peer.multiaddrs[0]);
     //TODO: make this pass keys through rendezvous point
   }
   async fetchKeys() {

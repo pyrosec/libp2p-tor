@@ -74,6 +74,7 @@ export class Proxy extends Libp2pWrapped {
       }
       return _ret;
     });
+    console.log(data);
     const baseMessage = protocol.BaseMessage.decode(data);
     let content: any;
     switch (baseMessage["type"]) {
@@ -81,13 +82,14 @@ export class Proxy extends Libp2pWrapped {
         content = toString(baseMessage["content"]);
         break;
     }
+    console.log(content);
     if (content == "BEGIN") {
       await this.sendTorCell({
         stream,
         data: protocol.BaseMessage.encode({
           type: "string",
           content: fromString("BEGUN"),
-        }),
+        }).finish(),
       });
     }
   };
@@ -241,7 +243,9 @@ export class Proxy extends Libp2pWrapped {
     relayCellData: Uint8Array;
   }) {
     const { aes, hmac } = this.keys[`${circuitId}`];
-    const addr = multiaddr(relayCellData.slice(128));
+    const addr = multiaddr(relayCellData.slice(0, relayCellData.length));
+    console.log("here");
+    console.log(addr);
     const returnData = protocol.BaseMessage.decode(
       await this.sendTorCellWithResponse({
         peerId: addr,
@@ -249,10 +253,11 @@ export class Proxy extends Libp2pWrapped {
         data: protocol.BaseMessage.encode({
           type: "string",
           content: fromString("BEGIN"),
-        }),
+        }).finish(),
       })
     );
     let content: any;
+    console.log(returnData);
     switch (returnData.type) {
       default:
         content = toString(returnData.content);
