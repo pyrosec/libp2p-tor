@@ -278,7 +278,7 @@ export class Router extends Libp2pWrapped {
       [Symbol.asyncIterator]();
     const peer: PeerInfo = (await peers.next()).value;
     await this.build(3);
-    await this.begin(peer.multiaddrs[0]);
+    await this.begin(peer.multiaddrs[1]);
     //TODO: make this pass keys through rendezvous point
   }
   async fetchKeys() {

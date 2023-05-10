@@ -62,37 +62,7 @@ export class Proxy extends Libp2pWrapped {
     await this.register();
     await this.handle(PROTOCOLS.message, this.handleTorMessage);
     await this.handle(PROTOCOLS.advertise, this.handleAdvertise);
-    await this.handle(PROTOCOLS.baseMessage, this.handleBaseMessage);
   }
-
-  handleBaseMessage: StreamHandler = async ({ stream }) => {
-    const data = await pipe(stream.source, decode(), async (source) => {
-      let _ret: Uint8Array;
-      for await (const _data of source) {
-        _ret = _data.subarray();
-        break;
-      }
-      return _ret;
-    });
-    console.log(data);
-    const baseMessage = protocol.BaseMessage.decode(data);
-    let content: any;
-    switch (baseMessage["type"]) {
-      default:
-        content = toString(baseMessage["content"]);
-        break;
-    }
-    console.log(content);
-    if (content == "BEGIN") {
-      await this.sendTorCell({
-        stream,
-        data: protocol.BaseMessage.encode({
-          type: "string",
-          content: fromString("BEGUN"),
-        }).finish(),
-      });
-    }
-  };
 
   handleAdvertise: StreamHandler = async ({ stream }) => {
     const pubKey = await pipe(stream.source, decode(), async (source) => {
@@ -243,8 +213,8 @@ export class Proxy extends Libp2pWrapped {
     relayCellData: Uint8Array;
   }) {
     const { aes, hmac } = this.keys[`${circuitId}`];
+    console.log("handling begin");
     const addr = multiaddr(relayCellData.slice(0, relayCellData.length));
-    console.log("here");
     console.log(addr);
     const returnData = protocol.BaseMessage.decode(
       await this.sendTorCellWithResponse({
@@ -257,7 +227,6 @@ export class Proxy extends Libp2pWrapped {
       })
     );
     let content: any;
-    console.log(returnData);
     switch (returnData.type) {
       default:
         content = toString(returnData.content);

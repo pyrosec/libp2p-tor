@@ -12,6 +12,9 @@ import { Multiaddr } from "@multiformats/multiaddr";
 import { pushable } from "it-pushable";
 import { encode, decode } from "it-length-prefixed";
 import { pipe } from "it-pipe";
+import { PROTOCOLS } from "./tor";
+import { fromString, toString } from "uint8arrays";
+import { protocol } from "./protocol";
 
 type SendTorCellInput = {
   peerId: Multiaddr | PeerId;
@@ -47,6 +50,7 @@ export class Libp2pWrapped extends EventEmitter {
   async run(options: Libp2pOptions) {
     this._libp2p = await createLibp2pNode(options);
     await this._libp2p.start();
+    await this.handle(PROTOCOLS.baseMessage, this.handleBaseMessage);
   }
   handle(protocol: string, handler: StreamHandler, options = {}) {
     return this._libp2p.handle(protocol, handler, options);
@@ -86,5 +90,32 @@ export class Libp2pWrapped extends EventEmitter {
     return stream;
   }
 
-  async handleTorCell() {}
+  handleBaseMessage: StreamHandler = async ({ stream }) => {
+    console.log("handling base message");
+    const data = await pipe(stream.source, decode(), async (source) => {
+      let _ret: Uint8Array;
+      for await (const _data of source) {
+        _ret = _data.subarray();
+        break;
+      }
+      return _ret;
+    });
+    const baseMessage = protocol.BaseMessage.decode(data);
+    let content: any;
+    switch (baseMessage["type"]) {
+      default:
+        content = toString(baseMessage["content"]);
+        break;
+    }
+    console.log(content);
+    if (content == "BEGIN") {
+      await this.sendTorCell({
+        stream,
+        data: protocol.BaseMessage.encode({
+          type: "string",
+          content: fromString("BEGUN"),
+        }).finish(),
+      });
+    }
+  };
 }
