@@ -45,10 +45,21 @@ export async function createLibp2pNode(
   return await createLibp2p(options);
 }
 
+type BaseMessageHandler = ({
+  stream,
+  baseMessage,
+}: {
+  stream: Stream;
+  baseMessage: { content: any; type: string };
+}) => Promise<void>;
+
 export class Libp2pWrapped extends EventEmitter {
   public _libp2p: Libp2p;
+  public baseMessageHandlers: Record<string, BaseMessageHandler>;
+
   async run(options: Libp2pOptions) {
     this._libp2p = await createLibp2pNode(options);
+    this.baseMessageHandlers["string"] = this.handleBaseMessageString;
     await this._libp2p.start();
     await this.handle(PROTOCOLS.baseMessage, this.handleBaseMessage);
   }
@@ -90,6 +101,23 @@ export class Libp2pWrapped extends EventEmitter {
     return stream;
   }
 
+  handleBaseMessageString: BaseMessageHandler = async ({
+    stream,
+    baseMessage,
+  }) => {
+    let content = toString(baseMessage["content"]);
+
+    if (content == "BEGIN") {
+      await this.sendTorCell({
+        stream,
+        data: protocol.BaseMessage.encode({
+          type: "string",
+          content: fromString("BEGUN"),
+        }).finish(),
+      });
+    }
+  };
+
   handleBaseMessage: StreamHandler = async ({ stream }) => {
     console.log("handling base message");
     const data = await pipe(stream.source, decode(), async (source) => {
@@ -101,20 +129,10 @@ export class Libp2pWrapped extends EventEmitter {
       return _ret;
     });
     const baseMessage = protocol.BaseMessage.decode(data);
-    let content: any;
-    switch (baseMessage["type"]) {
-      default:
-        content = toString(baseMessage["content"]);
-        break;
-    }
-    console.log(content);
-    if (content == "BEGIN") {
-      await this.sendTorCell({
+    if (baseMessage["type"] in this.baseMessageHandlers) {
+      await this.baseMessageHandlers[baseMessage["type"]]({
         stream,
-        data: protocol.BaseMessage.encode({
-          type: "string",
-          content: fromString("BEGUN"),
-        }).finish(),
+        baseMessage,
       });
     }
   };
