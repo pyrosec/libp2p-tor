@@ -28,6 +28,15 @@ type Key = {
   aes: crypto.aes.AESCipher[];
   hmac: HmacType[];
 };
+
+type RendezvousKey = {
+  pubKey: Uint8Array;
+  ecdhKey: ECDHKey;
+  aes: crypto.aes.AESCipher;
+  hmac: HmacType;
+  key: PrivateKey;
+};
+
 export class Router extends Libp2pWrapped {
   public registries: Multiaddr[];
   public advertiseKey: PrivateKey;
@@ -39,6 +48,7 @@ export class Router extends Libp2pWrapped {
     id: string;
     addr: Multiaddr;
   }[];
+  public rendezvousKeys: Record<number, RendezvousKey>;
   public keys: Record<number, Key>;
 
   constructor(registries: Multiaddr[]) {
@@ -54,6 +64,7 @@ export class Router extends Libp2pWrapped {
       await a;
       return this.extend(circId);
     }, Promise.resolve());
+    return circId;
   }
 
   async extend(circId: number) {
@@ -273,12 +284,33 @@ export class Router extends Libp2pWrapped {
   async rendezvous(pubKey: Uint8Array) {
     const hash = await sha256.digest(pubKey);
     const cid = CID.create(1, 0x01, hash);
+    const _pubKey = rsa.unmarshalRsaPublicKey(pubKey);
+    const rendezvousKey = await crypto.keys.generateKeyPair("RSA", 1024);
+    const encryptedRendezvousKey = _pubKey.encrypt(
+      rendezvousKey.public.marshal()
+    );
+    const payload = new Uint8Array(
+      encryptedRendezvousKey.length + pubKey.length
+    );
+    payload.set(pubKey);
+    payload.set(encryptedRendezvousKey, pubKey.length);
     const peers = this._libp2p.contentRouting
       .findProviders(cid)
       [Symbol.asyncIterator]();
     const peer: PeerInfo = (await peers.next()).value;
-    await this.build(3);
+    const circuitId = await this.build(3);
+    //@ts-ignore
+    this.rendezvousKeys[circuitId] = {};
+    this.rendezvousKeys[circuitId].key = rendezvousKey;
+    this.rendezvousKeys[circuitId].pubKey = pubKey;
     await this.begin(peer.multiaddrs[1]);
+    await this.send(
+      protocol.BaseMessage.encode({
+        type: "bytes",
+        content: payload,
+      }).finish(),
+      circuitId
+    );
     //TODO: make this pass keys through rendezvous point
   }
   async fetchKeys() {
