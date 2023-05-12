@@ -45,7 +45,7 @@ export async function createLibp2pNode(
   return await createLibp2p(options);
 }
 
-type BaseMessageHandler = ({
+export type BaseMessageHandler = ({
   stream,
   baseMessage,
 }: {

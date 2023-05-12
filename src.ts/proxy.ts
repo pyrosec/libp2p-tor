@@ -1,5 +1,6 @@
 import type { Libp2pOptions } from "libp2p";
 import { Libp2pWrapped } from "./libp2p.wrapper";
+import type { BaseMessageHandler } from "./libp2p.wrapper";
 import { generateEphemeralKeyPair } from "@libp2p/crypto/keys";
 import type { ECDHKey } from "@libp2p/crypto/keys/interface";
 import { pipe } from "it-pipe";
@@ -57,12 +58,20 @@ export class Proxy extends Libp2pWrapped {
       },
     }
   ) {
+    this.baseMessageHandlers["rendezvous"];
     await super.run(options);
     this.torKey = await crypto.keys.generateKeyPair("RSA", 1024);
     await this.register();
     await this.handle(PROTOCOLS.message, this.handleTorMessage);
     await this.handle(PROTOCOLS.advertise, this.handleAdvertise);
   }
+
+  handleBaseMessageRendezvous: BaseMessageHandler = async ({
+    stream,
+    baseMessage,
+  }) => {
+    //TODO: write out how to create introduction point
+  };
 
   handleAdvertise: StreamHandler = async ({ stream }) => {
     const pubKey = await pipe(stream.source, decode(), async (source) => {
