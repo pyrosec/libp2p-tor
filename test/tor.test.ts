@@ -52,6 +52,6 @@ describe("tor", () => {
 
   it("rendezvous: should test rendezvous points", async () => {
     await router2.advertise();
-    await router.rendezvous(router2.advertiseKey.public.bytes);
+    await router.rendezvous(router2.advertiseKey.public.marshal());
   });
 });

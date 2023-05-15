@@ -59,6 +59,7 @@ export class Router extends Libp2pWrapped {
     this.registries = registries;
     this.keys = {};
     this.advertiseIds = {};
+    this.rendezvousKeys = {};
   }
 
   async build(length: number = 1) {
@@ -277,7 +278,7 @@ export class Router extends Libp2pWrapped {
     await points.reduce(async (_a, p) => {
       await _a;
       const stream = await this.dialProtocol(p, PROTOCOLS.advertise);
-      await pipe([this.advertiseKey.public.bytes], encode(), stream.sink);
+      await pipe([this.advertiseKey.public.marshal()], encode(), stream.sink);
       const id = await this.build(3);
       await this.begin(p, id);
       this.advertiseIds[p.toString()] = id;
@@ -297,12 +298,14 @@ export class Router extends Libp2pWrapped {
   async rendezvous(pubKey: Uint8Array) {
     const hash = await sha256.digest(pubKey);
     const cid = CID.create(1, 0x01, hash);
-    const cookie = crypto.randomBytes(32);
-
+    const cookie = crypto.randomBytes(64);
+    const _pubKey = rsa.unmarshalRsaPublicKey(pubKey);
+    const encryptedCookie = Uint8Array.from(_pubKey.encrypt(cookie));
+    console.log(encryptedCookie.length);
     const rendezvousKey = await crypto.keys.generateKeyPair("RSA", 1024);
     const payload = new Uint8Array(cookie.length + pubKey.length);
-    payload.set(pubKey);
-    payload.set(cookie, pubKey.length);
+    payload.set(cookie);
+    payload.set(pubKey, cookie.length);
     const peers = this._libp2p.contentRouting
       .findProviders(cid)
       [Symbol.asyncIterator]();

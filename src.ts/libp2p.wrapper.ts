@@ -57,6 +57,10 @@ export class Libp2pWrapped extends EventEmitter {
   public _libp2p: Libp2p;
   public baseMessageHandlers: Record<string, BaseMessageHandler>;
 
+  constructor(opts?: any) {
+    super(opts);
+    this.baseMessageHandlers = {};
+  }
   async run(options: Libp2pOptions) {
     this._libp2p = await createLibp2pNode(options);
     this.baseMessageHandlers["string"] = this.handleBaseMessageString;
