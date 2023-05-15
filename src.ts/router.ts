@@ -36,6 +36,7 @@ type RendezvousKey = {
   aes: crypto.aes.AESCipher;
   hmac: HmacType;
   key: PrivateKey;
+  cookie: Uint8Array;
 };
 
 export class Router extends Libp2pWrapped {
@@ -296,16 +297,12 @@ export class Router extends Libp2pWrapped {
   async rendezvous(pubKey: Uint8Array) {
     const hash = await sha256.digest(pubKey);
     const cid = CID.create(1, 0x01, hash);
-    const _pubKey = rsa.unmarshalRsaPublicKey(pubKey);
+    const cookie = crypto.randomBytes(32);
+
     const rendezvousKey = await crypto.keys.generateKeyPair("RSA", 1024);
-    const encryptedRendezvousKey = _pubKey.encrypt(
-      rendezvousKey.public.marshal()
-    );
-    const payload = new Uint8Array(
-      encryptedRendezvousKey.length + pubKey.length
-    );
+    const payload = new Uint8Array(cookie.length + pubKey.length);
     payload.set(pubKey);
-    payload.set(encryptedRendezvousKey, pubKey.length);
+    payload.set(cookie, pubKey.length);
     const peers = this._libp2p.contentRouting
       .findProviders(cid)
       [Symbol.asyncIterator]();
@@ -315,10 +312,11 @@ export class Router extends Libp2pWrapped {
     this.rendezvousKeys[circuitId] = {};
     this.rendezvousKeys[circuitId].key = rendezvousKey;
     this.rendezvousKeys[circuitId].pubKey = pubKey;
+    this.rendezvousKeys[circuitId].cookie = cookie;
     await this.begin(peer.multiaddrs[1]);
     await this.send(
       protocol.BaseMessage.encode({
-        type: "rendezvous",
+        type: "rendezvous/cookie",
         content: payload,
       }).finish(),
       circuitId
