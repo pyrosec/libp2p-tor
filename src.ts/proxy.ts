@@ -58,20 +58,12 @@ export class Proxy extends Libp2pWrapped {
       },
     }
   ) {
-    this.baseMessageHandlers["rendezvous"];
     await super.run(options);
     this.torKey = await crypto.keys.generateKeyPair("RSA", 1024);
     await this.register();
     await this.handle(PROTOCOLS.message, this.handleTorMessage);
     await this.handle(PROTOCOLS.advertise, this.handleAdvertise);
   }
-
-  handleBaseMessageRendezvous: BaseMessageHandler = async ({
-    stream,
-    baseMessage,
-  }) => {
-    //TODO: write out how to create introduction point
-  };
 
   handleAdvertise: StreamHandler = async ({ stream }) => {
     const pubKey = await pipe(stream.source, decode(), async (source) => {

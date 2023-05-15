@@ -3,6 +3,7 @@ import { generateEphemeralKeyPair } from "@libp2p/crypto/keys";
 import { toString, fromString } from "uint8arrays";
 import { Multiaddr } from "@multiformats/multiaddr";
 import type { Libp2pOptions } from "libp2p";
+import type { BaseMessageHandler } from "./libp2p.wrapper";
 import { Libp2pWrapped } from "./libp2p.wrapper";
 import { pipe } from "it-pipe";
 import { encode, decode } from "it-length-prefixed";
@@ -40,6 +41,7 @@ type RendezvousKey = {
 export class Router extends Libp2pWrapped {
   public registries: Multiaddr[];
   public advertiseKey: PrivateKey;
+  public advertiseIds: Record<string, number>;
   public proxies: {
     publicKey: {
       encrypt: (bytes: Uint8Array) => Promise<Buffer>;
@@ -55,6 +57,7 @@ export class Router extends Libp2pWrapped {
     super();
     this.registries = registries;
     this.keys = {};
+    this.advertiseIds = {};
   }
 
   async build(length: number = 1) {
@@ -274,13 +277,22 @@ export class Router extends Libp2pWrapped {
       await _a;
       const stream = await this.dialProtocol(p, PROTOCOLS.advertise);
       await pipe([this.advertiseKey.public.bytes], encode(), stream.sink);
+      const id = await this.build(3);
+      await this.begin(p, id);
+      this.advertiseIds[p.toString()] = id;
     }, Promise.resolve());
   }
 
   async pickAdvertisePoints(): Promise<Multiaddr[]> {
-    return this.proxies.map((d) => d.addr);
+    return this.proxies.map((d) => d.addr).slice(0, 2);
   }
 
+  handleBaseMessageRendezvous: BaseMessageHandler = async ({
+    stream,
+    baseMessage,
+  }) => {
+    //TODO: write out how to create introduction point
+  };
   async rendezvous(pubKey: Uint8Array) {
     const hash = await sha256.digest(pubKey);
     const cid = CID.create(1, 0x01, hash);
@@ -306,7 +318,7 @@ export class Router extends Libp2pWrapped {
     await this.begin(peer.multiaddrs[1]);
     await this.send(
       protocol.BaseMessage.encode({
-        type: "bytes",
+        type: "rendezvous",
         content: payload,
       }).finish(),
       circuitId
@@ -363,6 +375,7 @@ export class Router extends Libp2pWrapped {
     await this.fetchKeys();
 
     this.advertiseKey = await crypto.keys.generateKeyPair("RSA", 1024);
+    this.baseMessageHandlers["rendezvous"] = this.handleBaseMessageRendezvous;
     //await this.advertise();
   }
 }
