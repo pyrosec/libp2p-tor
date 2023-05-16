@@ -170,21 +170,12 @@ export class Router extends Libp2pWrapped {
       circuitId,
       data: encodedData,
     }).encode();
-    const stream = await this.dialProtocol(keys.hops[0], PROTOCOLS.message);
-    pipe([cell], encode(), stream.sink);
-    const returnCellRaw = await pipe(
-      stream.source,
-      decode(),
-      async (source) => {
-        let _r: Uint8Array;
-        //TODO: fix these declarations across the project
-        for await (const data of source) {
-          _r = data.subarray();
-        }
-        return _r;
-      }
-    );
-    return (await this.decodeReturnCell(Cell.from(returnCellRaw), keys)).data;
+    const returnCellRaw = await this.sendTorCellWithResponse({
+      data: cell,
+      peerId: keys.hops[0],
+      protocol: PROTOCOLS.message,
+    });
+    return (await this.decodeReturnCell(Cell.decode(returnCellRaw), keys)).data;
   }
 
   async decodeReturnCell(returnCell: Cell, keys: Key) {
@@ -193,8 +184,12 @@ export class Router extends Libp2pWrapped {
     }, Promise.resolve(returnCell.data as Uint8Array));
     const returnRelayCell = RelayCell.from(returnData);
     if (
-      returnRelayCell.data.length == returnRelayCell.len &&
-      (await keys.hmac[0].digest(returnRelayCell.data)).equals(
+      equals(
+        (
+          await keys.hmac[keys.hmac.length - 1].digest(
+            returnRelayCell.data.subarray(0, returnRelayCell.len)
+          )
+        ).subarray(0, 6),
         returnRelayCell.digest
       )
     ) {
@@ -228,10 +223,10 @@ export class Router extends Libp2pWrapped {
       }).finish(),
       protocol: PROTOCOLS.message,
     });
-    const decodedResult = await keys.aes.reduce(async (a, aes) => {
-      return await aes.decrypt(await a);
-    }, Promise.resolve(protocol.Cell.decode(res).data as Uint8Array));
-    const resultCell = RelayCell.from(decodedResult);
+    const resultCell = await this.decodeReturnCell(
+      protocol.Cell.decode(res),
+      keys
+    );
     if (resultCell.command == RelayCellCommand.END)
       throw new Error("Couldn't begin the circuit");
   }

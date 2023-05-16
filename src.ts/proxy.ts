@@ -74,6 +74,13 @@ export class Proxy extends Libp2pWrapped {
     const cookie = baseMessage.content.slice(0, 128);
     const pubKey = baseMessage.content.slice(128);
     //TODO: ping pubkey circuit
+    await this.sendTorCell({
+      stream,
+      data: protocol.BaseMessage.encode({
+        type: "string",
+        content: fromString("SUCCESS"),
+      }).finish(),
+    });
   };
 
   handleAdvertise: StreamHandler = async ({ stream }) => {
@@ -244,7 +251,7 @@ export class Proxy extends Libp2pWrapped {
       default:
         content = toString(returnData.content);
     }
-    const data = fromString("");
+    const data = fromString("BEGUN");
     if (content == "BEGUN") {
       this.active[circuitId] = addr;
       return new Cell({
