@@ -123,7 +123,7 @@ export class Proxy extends Libp2pWrapped {
         data: await this.handleCreateCell(
           cell.circuitId,
           cellData,
-          connection.remotePeer
+          connection.remoteAddr
         ),
       }).finish();
     } else if (cell.command == CellCommand.RELAY) {
