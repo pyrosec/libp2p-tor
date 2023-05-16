@@ -18,6 +18,7 @@ import { CID } from "multiformats/cid";
 import { sha256 } from "multiformats/hashes/sha2";
 import type { PeerInfo } from "@libp2p/interface-peer-info";
 import { protocol } from "./protocol";
+import type { Connection, Stream } from "@libp2p/interface-connection";
 import { PROTOCOLS } from "./tor";
 
 type HmacType = Awaited<ReturnType<typeof crypto.hmac.create>>;
@@ -53,6 +54,7 @@ export class Router extends Libp2pWrapped {
   }[];
   public rendezvousKeys: Record<number, RendezvousKey>;
   public keys: Record<number, Key>;
+  public activeStreams: Record<number, Stream>;
 
   constructor(registries: Multiaddr[]) {
     super();
@@ -60,6 +62,7 @@ export class Router extends Libp2pWrapped {
     this.keys = {};
     this.advertiseIds = {};
     this.rendezvousKeys = {};
+    this.activeStreams = {};
   }
 
   async build(length: number = 1) {

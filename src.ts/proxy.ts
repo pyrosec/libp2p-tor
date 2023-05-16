@@ -39,6 +39,10 @@ export class Proxy extends Libp2pWrapped {
         multiaddr: Multiaddr;
         circuitId: number;
       };
+      prevHop: {
+        multiaddr: Multiaddr;
+        circuitId: number;
+      };
     }
   >;
   private active: Record<number, Multiaddr>;
@@ -97,7 +101,7 @@ export class Proxy extends Libp2pWrapped {
     await this._libp2p.contentRouting.provide(cid);
   };
 
-  handleTorMessage: StreamHandler = async ({ stream }) => {
+  handleTorMessage: StreamHandler = async ({ stream, connection }) => {
     console.log("handling tor message");
     const cell = await pipe(stream.source, decode(), async (source) => {
       let ret: Uint8Array;
@@ -116,7 +120,11 @@ export class Proxy extends Libp2pWrapped {
       returnCell = protocol.Cell.encode({
         circuitId: cell.circuitId,
         command: CellCommand.CREATED,
-        data: await this.handleCreateCell(cell.circuitId, cellData),
+        data: await this.handleCreateCell(
+          cell.circuitId,
+          cellData,
+          connection.remotePeer
+        ),
       }).finish();
     } else if (cell.command == CellCommand.RELAY) {
       const aes = this.keys[`${cell.circuitId}`].aes;
@@ -339,7 +347,11 @@ export class Proxy extends Libp2pWrapped {
     });
   }
 
-  async handleCreateCell(circuitId: number, cellData: Uint8Array) {
+  async handleCreateCell(
+    circuitId: number,
+    cellData: Uint8Array,
+    prevHop: Multiaddr
+  ) {
     const ecdhKey = await generateEphemeralKeyPair("P-256");
     const sharedKey = await ecdhKey.genSharedKey(cellData);
     const hmac = await createHmac("SHA256", sharedKey);
@@ -350,6 +362,10 @@ export class Proxy extends Libp2pWrapped {
       publicKey: cellData,
       hmac,
       nextHop: undefined,
+      prevHop: {
+        circuitId,
+        multiaddr: prevHop,
+      },
     };
 
     const digest = await hmac.digest(sharedKey);
