@@ -127,21 +127,19 @@ export class Libp2pWrapped extends EventEmitter {
 
   handleBaseMessage: StreamHandler = async ({ stream }) => {
     console.log("handling base message");
-    const data = await pipe(stream.source, decode(), async (source) => {
-      let _ret: Uint8Array;
+    await pipe(stream.source, decode(), async (source) => {
       for await (const _data of source) {
-        _ret = _data.subarray();
+        const data = _data.subarray();
+        const baseMessage = protocol.BaseMessage.decode(data);
+        if (baseMessage["type"] in this.baseMessageHandlers) {
+          await this.baseMessageHandlers[baseMessage["type"]]({
+            stream,
+            baseMessage,
+          });
+        }
         break;
       }
-      return _ret;
     });
-    const baseMessage = protocol.BaseMessage.decode(data);
-    if (baseMessage["type"] in this.baseMessageHandlers) {
-      await this.baseMessageHandlers[baseMessage["type"]]({
-        stream,
-        baseMessage,
-      });
-    }
   };
 
   waitForResponseOnChannel(channel: string) {
