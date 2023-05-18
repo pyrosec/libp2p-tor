@@ -109,8 +109,9 @@ export class Proxy extends Libp2pWrapped {
         ret = data.subarray();
         const cell = Cell.decode(ret);
         let returnCell: any,
-          shouldBreak: boolean = true;
+          shouldBreak: boolean = false;
         if (cell.command == CellCommand.CREATE) {
+          shouldBreak = true;
           const cellData: Uint8Array = Uint8Array.from(
             //@ts-ignore
             await this.torKey.decrypt((cell.data as Uint8Array).slice(0, 128))

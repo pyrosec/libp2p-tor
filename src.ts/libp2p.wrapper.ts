@@ -80,7 +80,10 @@ export class Libp2pWrapped extends EventEmitter {
     input: SendTorCellInput | SendTorCellInputWithStream
   ) {
     const stream = await this.sendTorCell(input);
+    return this.waitForSingularResponse(stream);
+  }
 
+  async waitForSingularResponse(stream: Stream) {
     return await pipe(stream.source, decode(), async (source) => {
       let ret: Uint8Array;
       // breaks on first iteration
