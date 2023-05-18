@@ -140,4 +140,12 @@ export class Libp2pWrapped extends EventEmitter {
       });
     }
   };
+
+  waitForResponseOnChannel(channel: string) {
+    return new Promise((resolve) => {
+      this.on(`${channel}:response`, (data) => {
+        resolve(data);
+      });
+    });
+  }
 }
