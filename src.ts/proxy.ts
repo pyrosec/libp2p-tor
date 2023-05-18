@@ -103,62 +103,63 @@ export class Proxy extends Libp2pWrapped {
 
   handleTorMessage: StreamHandler = async ({ stream, connection }) => {
     console.log("handling tor message");
-    const cell = await pipe(stream.source, decode(), async (source) => {
+    await pipe(stream.source, decode(), async (source) => {
       let ret: Uint8Array;
       for await (const data of source) {
         ret = data.subarray();
-        break;
-      }
-      return Cell.decode(ret);
-    });
-    let returnCell: any;
-    if (cell.command == CellCommand.CREATE) {
-      const cellData: Uint8Array = Uint8Array.from(
-        //@ts-ignore
-        await this.torKey.decrypt((cell.data as Uint8Array).slice(0, 128))
-      );
-      returnCell = protocol.Cell.encode({
-        circuitId: cell.circuitId,
-        command: CellCommand.CREATED,
-        data: await this.handleCreateCell(
-          cell.circuitId,
-          cellData,
-          connection.remoteAddr
-        ),
-      }).finish();
-    } else if (cell.command == CellCommand.RELAY) {
-      const aes = this.keys[`${cell.circuitId}`].aes;
-      const nextHop = this.keys[`${cell.circuitId}`].nextHop;
-      if (nextHop == undefined) {
-        returnCell = (
-          await this.handleRelayCell({
+        const cell = Cell.decode(ret);
+        let returnCell: any,
+          shouldBreak: boolean = true;
+        if (cell.command == CellCommand.CREATE) {
+          const cellData: Uint8Array = Uint8Array.from(
+            //@ts-ignore
+            await this.torKey.decrypt((cell.data as Uint8Array).slice(0, 128))
+          );
+          returnCell = protocol.Cell.encode({
             circuitId: cell.circuitId,
-            relayCell: RelayCell.from(
-              await aes.decrypt(cell.data as Uint8Array)
+            command: CellCommand.CREATED,
+            data: await this.handleCreateCell(
+              cell.circuitId,
+              cellData,
+              connection.remoteAddr
             ),
-          })
-        ).encode();
-      } else {
-        const nextCellEncoded = await this.sendTorCellWithResponse({
-          peerId: nextHop.multiaddr,
-          protocol: PROTOCOLS.message,
-          data: protocol.Cell.encode({
-            circuitId: nextHop.circuitId,
-            data: await aes.decrypt(cell.data as Uint8Array),
-            command: CellCommand.RELAY,
-          }).finish(),
+          }).finish();
+        } else if (cell.command == CellCommand.RELAY) {
+          const aes = this.keys[`${cell.circuitId}`].aes;
+          const nextHop = this.keys[`${cell.circuitId}`].nextHop;
+          if (nextHop == undefined) {
+            returnCell = (
+              await this.handleRelayCell({
+                circuitId: cell.circuitId,
+                relayCell: RelayCell.from(
+                  await aes.decrypt(cell.data as Uint8Array)
+                ),
+              })
+            ).encode();
+          } else {
+            const nextCellEncoded = await this.sendTorCellWithResponse({
+              peerId: nextHop.multiaddr,
+              protocol: PROTOCOLS.message,
+              data: protocol.Cell.encode({
+                circuitId: nextHop.circuitId,
+                data: await aes.decrypt(cell.data as Uint8Array),
+                command: CellCommand.RELAY,
+              }).finish(),
+            });
+            const nextCell = Cell.decode(nextCellEncoded);
+            returnCell = protocol.Cell.encode({
+              command: CellCommand.RELAY,
+              circuitId: cell.circuitId,
+              data: await aes.encrypt(nextCell.data as Uint8Array),
+            }).finish();
+          }
+        }
+        await this.sendTorCell({
+          stream,
+          data: returnCell,
         });
-        const nextCell = Cell.decode(nextCellEncoded);
-        returnCell = protocol.Cell.encode({
-          command: CellCommand.RELAY,
-          circuitId: cell.circuitId,
-          data: await aes.encrypt(nextCell.data as Uint8Array),
-        }).finish();
+        if (shouldBreak) break;
       }
-    }
-    await this.sendTorCell({
-      stream,
-      data: returnCell,
     });
   };
 
@@ -240,6 +241,7 @@ export class Proxy extends Libp2pWrapped {
     circuitId: number;
     relayCellData: Uint8Array;
   }) {
+    //change this so that the stream is kept active throughout the relay
     const { aes, hmac } = this.keys[`${circuitId}`];
     console.log("handling begin");
     const addr = multiaddr(relayCellData.slice(0, relayCellData.length));
