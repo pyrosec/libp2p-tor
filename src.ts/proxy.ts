@@ -81,7 +81,7 @@ export class Proxy extends Libp2pWrapped {
     await this.sendTorCell({
       stream,
       data: protocol.BaseMessage.encode({
-        type: "rendezvous/cookieReceive",
+        type: "rendezvous/cookie/receive",
         content: cookie,
       }),
     });
@@ -90,9 +90,10 @@ export class Proxy extends Libp2pWrapped {
     stream,
     baseMessage,
   }) => {
-    const cookie = baseMessage.content.slice(0, 128);
-    const pubKey = baseMessage.content.slice(128);
-    this.sendMessageToResponseChannel(toString(pubKey), cookie);
+    const encryptedContent = baseMessage.content.slice(0, 256);
+    const pubKey = baseMessage.content.slice(256);
+
+    this.sendMessageToResponseChannel(toString(pubKey), encryptedContent);
     //TODO: ping pubkey circuit
     await this.sendTorCell({
       stream,

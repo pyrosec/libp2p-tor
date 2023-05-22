@@ -174,7 +174,7 @@ export class Router extends Libp2pWrapped {
       circuitId,
       data: encodedData,
     }).encode();
-    const returnCellRaw = await this.sendTorCell({
+    await this.sendTorCell({
       data: cell,
       stream,
     });
@@ -296,7 +296,11 @@ export class Router extends Libp2pWrapped {
     return this.proxies.map((d) => d.addr).slice(0, 2);
   }
 
-  handleBaseMessageRendezvous: BaseMessageHandler = async ({
+  async pickRendezvousPoint(): Promise<Uint8Array> {
+    return this.proxies[this.proxies.length - 1].addr.bytes;
+  }
+
+  handleBaseMessageRendezvousCookieRecieve: BaseMessageHandler = async ({
     stream,
     baseMessage,
   }) => {
@@ -305,14 +309,9 @@ export class Router extends Libp2pWrapped {
   async rendezvous(pubKey: Uint8Array) {
     const hash = await sha256.digest(pubKey);
     const cid = CID.create(1, 0x01, hash);
-    const cookie = crypto.randomBytes(64);
+    const cookie = crypto.randomBytes(32);
     const _pubKey = rsa.unmarshalRsaPublicKey(pubKey);
-    const encryptedCookie = Uint8Array.from(_pubKey.encrypt(cookie));
-    console.log(encryptedCookie.length);
-    const rendezvousKey = await crypto.keys.generateKeyPair("RSA", 1024);
-    const payload = new Uint8Array(cookie.length + pubKey.length);
-    payload.set(cookie);
-    payload.set(pubKey, cookie.length);
+    const rendezvousKey = await crypto.keys.generateKeyPair("RSA", 4096);
     const peers = this._libp2p.contentRouting
       .findProviders(cid)
       [Symbol.asyncIterator]();
@@ -320,14 +319,32 @@ export class Router extends Libp2pWrapped {
     const circuitId = await this.build(3);
     //@ts-ignore
     this.rendezvousKeys[circuitId] = {};
+
+    const { key, genSharedKey } = await generateEphemeralKeyPair("P-256");
+    this.rendezvousKeys[circuitId].ecdhKey = { key, genSharedKey };
     this.rendezvousKeys[circuitId].key = rendezvousKey;
     this.rendezvousKeys[circuitId].pubKey = pubKey;
     this.rendezvousKeys[circuitId].cookie = cookie;
+    const rendezvousPoint = await this.pickRendezvousPoint();
+    const payload = new Uint8Array(cookie.length + key.length);
+    //TODO: handle this elegantly
+    if (payload.length > 509) throw new Error("overflowing relaycell length");
+    payload.set(cookie);
+    //65
+    payload.set(key, cookie.length);
+    //162
+
+    const encryptedPayload1 = Uint8Array.from(_pubKey.encrypt(payload));
+    const encryptedPayload2 = Uint8Array.from(_pubKey.encrypt(rendezvousPoint));
+    const finalPayload = new Uint8Array(256 + pubKey.length);
+    finalPayload.set(encryptedPayload1);
+    finalPayload.set(encryptedPayload2, encryptedPayload1.length);
+    finalPayload.set(pubKey, encryptedPayload2.length);
     await this.begin(peer.multiaddrs[1], circuitId);
     await this.send(
       protocol.BaseMessage.encode({
         type: "rendezvous/cookie",
-        content: payload,
+        content: finalPayload,
       }).finish(),
       circuitId
     );
@@ -382,8 +399,9 @@ export class Router extends Libp2pWrapped {
     await super.run(options);
     await this.fetchKeys();
 
-    this.advertiseKey = await crypto.keys.generateKeyPair("RSA", 1024);
-    this.baseMessageHandlers["rendezvous"] = this.handleBaseMessageRendezvous;
+    this.advertiseKey = await crypto.keys.generateKeyPair("RSA", 4096);
+    this.baseMessageHandlers["rendezvous/cookie/recieve"] =
+      this.handleBaseMessageRendezvousCookieRecieve;
     //await this.advertise();
   }
 }
