@@ -29,6 +29,7 @@ type Key = {
   keys: Uint8Array[];
   aes: crypto.aes.AESCipher[];
   hmac: HmacType[];
+  activeStream?: Stream;
 };
 
 type RendezvousKey = {
@@ -156,6 +157,7 @@ export class Router extends Libp2pWrapped {
   async send(_data: string = "", circuitId: number = null) {
     if (!circuitId) circuitId = Number(Object.keys(this.keys))[0];
     const keys = this.keys[`${circuitId}`];
+    const stream = this.keys[`${circuitId}`].activeStream;
     const hmacLast = keys.hmac[keys.hmac.length - 1];
     const data = fromString(_data);
     const relayCell = new RelayCell({
@@ -175,8 +177,7 @@ export class Router extends Libp2pWrapped {
     }).encode();
     const returnCellRaw = await this.sendTorCellWithResponse({
       data: cell,
-      peerId: keys.hops[0],
-      protocol: PROTOCOLS.message,
+      stream,
     });
     return (await this.decodeReturnCell(Cell.decode(returnCellRaw), keys)).data;
   }
@@ -203,6 +204,7 @@ export class Router extends Libp2pWrapped {
   }
 
   async begin(peer: Multiaddr, circuitId: number = null) {
+    //TODO: remove this later
     if (!circuitId) circuitId = Number(Object.keys(this.keys)[0]);
     const keys = this.keys[`${circuitId}`];
     const hmacLast = keys.hmac[keys.hmac.length - 1];
@@ -217,7 +219,7 @@ export class Router extends Libp2pWrapped {
     const encodedData = await [...keys.aes].reverse().reduce(async (a, aes) => {
       return await aes.encrypt(await a);
     }, Promise.resolve(relayCell));
-    const res = await this.sendTorCellWithResponse({
+    const stream = await this.sendTorCell({
       peerId: keys.hops[0],
       data: protocol.Cell.encode({
         command: CellCommand.RELAY,
@@ -226,12 +228,14 @@ export class Router extends Libp2pWrapped {
       }).finish(),
       protocol: PROTOCOLS.message,
     });
+    const res = await this.waitForSingularResponse(stream);
     const resultCell = await this.decodeReturnCell(
       protocol.Cell.decode(res),
       keys
     );
     if (resultCell.command == RelayCellCommand.END)
       throw new Error("Couldn't begin the circuit");
+    this.keys[`${circuitId}`].activeStream = stream;
   }
 
   async create() {
@@ -279,6 +283,7 @@ export class Router extends Libp2pWrapped {
       await pipe([this.advertiseKey.public.marshal()], encode(), stream.sink);
       const id = await this.build(3);
       await this.begin(p, id);
+      await this.send();
       this.advertiseIds[p.toString()] = id;
     }, Promise.resolve());
   }
@@ -314,7 +319,7 @@ export class Router extends Libp2pWrapped {
     this.rendezvousKeys[circuitId].key = rendezvousKey;
     this.rendezvousKeys[circuitId].pubKey = pubKey;
     this.rendezvousKeys[circuitId].cookie = cookie;
-    await this.begin(peer.multiaddrs[1]);
+    await this.begin(peer.multiaddrs[1], circuitId);
     await this.send(
       protocol.BaseMessage.encode({
         type: "rendezvous/cookie",

@@ -142,11 +142,15 @@ export class Libp2pWrapped extends EventEmitter {
     });
   };
 
-  waitForResponseOnChannel(channel: string) {
+  waitForResponseOnChannel(channel: string): Promise<Uint8Array> {
     return new Promise((resolve) => {
-      this.on(`${channel}:response`, (data) => {
+      this.on(`${channel}:response`, (data: Uint8Array) => {
         resolve(data);
       });
     });
+  }
+
+  sendMessageToChannel(channel: string, message: Uint8Array) {
+    this.emit(`${channel}:message`, message);
   }
 }
