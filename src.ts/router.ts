@@ -154,12 +154,11 @@ export class Router extends Libp2pWrapped {
     );
   }
 
-  async send(_data: string = "", circuitId: number = null) {
+  async send(data: any, circuitId: number = null) {
     if (!circuitId) circuitId = Number(Object.keys(this.keys))[0];
     const keys = this.keys[`${circuitId}`];
     const stream = this.keys[`${circuitId}`].activeStream;
     const hmacLast = keys.hmac[keys.hmac.length - 1];
-    const data = fromString(_data);
     const relayCell = new RelayCell({
       command: RelayCellCommand.DATA,
       data,
@@ -175,11 +174,10 @@ export class Router extends Libp2pWrapped {
       circuitId,
       data: encodedData,
     }).encode();
-    const returnCellRaw = await this.sendTorCellWithResponse({
+    const returnCellRaw = await this.sendTorCell({
       data: cell,
       stream,
     });
-    return (await this.decodeReturnCell(Cell.decode(returnCellRaw), keys)).data;
   }
 
   async decodeReturnCell(returnCell: Cell, keys: Key) {
@@ -283,7 +281,13 @@ export class Router extends Libp2pWrapped {
       await pipe([this.advertiseKey.public.marshal()], encode(), stream.sink);
       const id = await this.build(3);
       await this.begin(p, id);
-      await this.send();
+      await this.send(
+        protocol.BaseMessage.encode({
+          type: "rendezvous/begin",
+          content: toString(this.advertiseKey.public.marshal()),
+        }).finish(),
+        id
+      );
       this.advertiseIds[p.toString()] = id;
     }, Promise.resolve());
   }

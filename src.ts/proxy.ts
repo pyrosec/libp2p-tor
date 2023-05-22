@@ -64,6 +64,8 @@ export class Proxy extends Libp2pWrapped {
   ) {
     this.baseMessageHandlers["rendezvous/cookie"] =
       this.handleBaseMessageRendezvousCookie;
+    this.baseMessageHandlers["rendezvous/begin"] =
+      this.handleBaseMessageRendezvousBegin;
     await super.run(options);
     this.torKey = await crypto.keys.generateKeyPair("RSA", 1024);
     await this.register();
@@ -71,12 +73,26 @@ export class Proxy extends Libp2pWrapped {
     await this.handle(PROTOCOLS.advertise, this.handleAdvertise);
   }
 
+  handleBaseMessageRendezvousBegin: BaseMessageHandler = async ({
+    stream,
+    baseMessage,
+  }) => {
+    const cookie = await this.waitForResponseOnChannel(baseMessage.content);
+    await this.sendTorCell({
+      stream,
+      data: protocol.BaseMessage.encode({
+        type: "rendezvous/cookieReceive",
+        content: cookie,
+      }),
+    });
+  };
   handleBaseMessageRendezvousCookie: BaseMessageHandler = async ({
     stream,
     baseMessage,
   }) => {
     const cookie = baseMessage.content.slice(0, 128);
     const pubKey = baseMessage.content.slice(128);
+    this.sendMessageToResponseChannel(toString(pubKey), cookie);
     //TODO: ping pubkey circuit
     await this.sendTorCell({
       stream,

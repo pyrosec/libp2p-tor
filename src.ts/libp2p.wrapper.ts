@@ -153,4 +153,7 @@ export class Libp2pWrapped extends EventEmitter {
   sendMessageToChannel(channel: string, message: Uint8Array) {
     this.emit(`${channel}:message`, message);
   }
+  sendMessageToResponseChannel(channel: string, message: any) {
+    this.emit(`${channel}:response`, message);
+  }
 }
