@@ -288,7 +288,7 @@ export class Router extends Libp2pWrapped {
       await this.send(
         protocol.BaseMessage.encode({
           type: "rendezvous/begin",
-          content: toString(this.advertiseKey.public.marshal()),
+          content: this.advertiseKey.public.marshal(),
         }).finish(),
         id
       );
@@ -325,7 +325,7 @@ export class Router extends Libp2pWrapped {
     const circuitId = await this.build(3);
     //@ts-ignore
     this.rendezvousKeys[circuitId] = {};
-
+    console.log(pubKey);
     const { key, genSharedKey } = await generateEphemeralKeyPair("P-256");
     this.rendezvousKeys[circuitId].ecdhKey = { key, genSharedKey };
     this.rendezvousKeys[circuitId].key = rendezvousKey;
@@ -342,11 +342,10 @@ export class Router extends Libp2pWrapped {
 
     const encryptedPayload1 = Uint8Array.from(_pubKey.encrypt(payload));
     const encryptedPayload2 = Uint8Array.from(_pubKey.encrypt(rendezvousPoint));
-    console.log(encryptedPayload2.length, encryptedPayload1.length);
     const finalPayload = new Uint8Array(256 + pubKey.length);
     finalPayload.set(encryptedPayload1);
     finalPayload.set(encryptedPayload2, encryptedPayload1.length);
-    finalPayload.set(pubKey, encryptedPayload2.length);
+    finalPayload.set(pubKey, 256);
     await this.begin(peer.multiaddrs[1], circuitId);
     console.log("sending cookie");
     await this.send(
