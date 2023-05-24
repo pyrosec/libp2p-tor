@@ -9,7 +9,7 @@ import type { StreamHandler } from "@libp2p/interface-registrar";
 import type { Stream } from "@libp2p/interface-connection";
 import { PeerId } from "@libp2p/interface-peer-id";
 import { Multiaddr } from "@multiformats/multiaddr";
-import { pushable } from "it-pushable";
+import { pushable, Pushable } from "it-pushable";
 import { encode, decode } from "it-length-prefixed";
 import { pipe } from "it-pipe";
 import { PROTOCOLS } from "./tor";
@@ -24,6 +24,10 @@ type SendTorCellInput = {
 
 type SendTorCellInputWithStream = {
   stream: Stream;
+  data: Uint8Array;
+};
+type PushTorCellInput = {
+  messages: Pushable<any>;
   data: Uint8Array;
 };
 
@@ -79,7 +83,7 @@ export class Libp2pWrapped extends EventEmitter {
   async sendTorCellWithResponse(
     input: SendTorCellInput | SendTorCellInputWithStream
   ) {
-    const stream = await this.sendTorCell(input);
+    const { stream } = await this.sendTorCell(input);
     return this.waitForSingularResponse(stream);
   }
 
@@ -94,7 +98,9 @@ export class Libp2pWrapped extends EventEmitter {
       return ret;
     });
   }
-
+  async pushTorCell(input: PushTorCellInput) {
+    input.messages.push(input.data);
+  }
   async sendTorCell(input: SendTorCellInput | SendTorCellInputWithStream) {
     const messages = pushable();
     let stream: Stream;
@@ -104,8 +110,8 @@ export class Libp2pWrapped extends EventEmitter {
       stream = await this.dialProtocol(input.peerId, input.protocol);
     }
     pipe(messages, encode(), stream.sink);
-    messages.push(input.data).end();
-    return stream;
+    messages.push(input.data);
+    return { stream, messages };
   }
 
   handleBaseMessageString: BaseMessageHandler = async ({
@@ -131,6 +137,7 @@ export class Libp2pWrapped extends EventEmitter {
       for await (const _data of source) {
         const data = _data.subarray();
         const baseMessage = protocol.BaseMessage.decode(data);
+        console.log(baseMessage["type"]);
         if (baseMessage["type"] in this.baseMessageHandlers) {
           await this.baseMessageHandlers[baseMessage["type"]]({
             stream,

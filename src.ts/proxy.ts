@@ -92,7 +92,7 @@ export class Proxy extends Libp2pWrapped {
   }) => {
     const encryptedContent = baseMessage.content.slice(0, 256);
     const pubKey = baseMessage.content.slice(256);
-
+    console.log(encryptedContent);
     this.sendMessageToResponseChannel(toString(pubKey), encryptedContent);
     //TODO: ping pubkey circuit
     await this.sendTorCell({

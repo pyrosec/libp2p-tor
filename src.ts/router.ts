@@ -20,6 +20,7 @@ import type { PeerInfo } from "@libp2p/interface-peer-info";
 import { protocol } from "./protocol";
 import type { Stream } from "@libp2p/interface-connection";
 import { PROTOCOLS } from "./tor";
+import type { Pushable } from "it-pushable";
 
 type HmacType = Awaited<ReturnType<typeof crypto.hmac.create>>;
 const rsa = crypto.keys.supportedKeys.rsa;
@@ -55,7 +56,10 @@ export class Router extends Libp2pWrapped {
   }[];
   public rendezvousKeys: Record<number, RendezvousKey>;
   public keys: Record<number, Key>;
-  public activeStreams: Record<number, Stream>;
+  public activeStreams: Record<
+    number,
+    { stream: Stream; messages: Pushable<any> }
+  >;
 
   constructor(registries: Multiaddr[]) {
     super();
@@ -157,7 +161,7 @@ export class Router extends Libp2pWrapped {
   async send(data: any, circuitId: number = null) {
     if (!circuitId) circuitId = Number(Object.keys(this.keys))[0];
     const keys = this.keys[`${circuitId}`];
-    const stream = this.keys[`${circuitId}`].activeStream;
+    const { stream, messages } = this.activeStreams[circuitId];
     const hmacLast = keys.hmac[keys.hmac.length - 1];
     const relayCell = new RelayCell({
       command: RelayCellCommand.DATA,
@@ -174,9 +178,9 @@ export class Router extends Libp2pWrapped {
       circuitId,
       data: encodedData,
     }).encode();
-    await this.sendTorCell({
+    await this.pushTorCell({
       data: cell,
-      stream,
+      messages,
     });
   }
 
@@ -217,7 +221,7 @@ export class Router extends Libp2pWrapped {
     const encodedData = await [...keys.aes].reverse().reduce(async (a, aes) => {
       return await aes.encrypt(await a);
     }, Promise.resolve(relayCell));
-    const stream = await this.sendTorCell({
+    const { stream, messages } = await this.sendTorCell({
       peerId: keys.hops[0],
       data: protocol.Cell.encode({
         command: CellCommand.RELAY,
@@ -233,7 +237,7 @@ export class Router extends Libp2pWrapped {
     );
     if (resultCell.command == RelayCellCommand.END)
       throw new Error("Couldn't begin the circuit");
-    this.keys[`${circuitId}`].activeStream = stream;
+    this.activeStreams[circuitId] = { stream, messages };
   }
 
   async create() {
@@ -304,6 +308,8 @@ export class Router extends Libp2pWrapped {
     stream,
     baseMessage,
   }) => {
+    console.log(baseMessage);
+    this.emit(`rendezvous:response`, baseMessage);
     //TODO: write out how to create introduction point
   };
   async rendezvous(pubKey: Uint8Array) {
@@ -311,7 +317,7 @@ export class Router extends Libp2pWrapped {
     const cid = CID.create(1, 0x01, hash);
     const cookie = crypto.randomBytes(32);
     const _pubKey = rsa.unmarshalRsaPublicKey(pubKey);
-    const rendezvousKey = await crypto.keys.generateKeyPair("RSA", 4096);
+    const rendezvousKey = await crypto.keys.generateKeyPair("RSA", 1024);
     const peers = this._libp2p.contentRouting
       .findProviders(cid)
       [Symbol.asyncIterator]();
@@ -336,11 +342,13 @@ export class Router extends Libp2pWrapped {
 
     const encryptedPayload1 = Uint8Array.from(_pubKey.encrypt(payload));
     const encryptedPayload2 = Uint8Array.from(_pubKey.encrypt(rendezvousPoint));
+    console.log(encryptedPayload2.length, encryptedPayload1.length);
     const finalPayload = new Uint8Array(256 + pubKey.length);
     finalPayload.set(encryptedPayload1);
     finalPayload.set(encryptedPayload2, encryptedPayload1.length);
     finalPayload.set(pubKey, encryptedPayload2.length);
     await this.begin(peer.multiaddrs[1], circuitId);
+    console.log("sending cookie");
     await this.send(
       protocol.BaseMessage.encode({
         type: "rendezvous/cookie",
@@ -399,7 +407,7 @@ export class Router extends Libp2pWrapped {
     await super.run(options);
     await this.fetchKeys();
 
-    this.advertiseKey = await crypto.keys.generateKeyPair("RSA", 4096);
+    this.advertiseKey = await crypto.keys.generateKeyPair("RSA", 1024);
     this.baseMessageHandlers["rendezvous/cookie/recieve"] =
       this.handleBaseMessageRendezvousCookieRecieve;
     //await this.advertise();
