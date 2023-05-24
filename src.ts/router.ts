@@ -158,7 +158,7 @@ export class Router extends Libp2pWrapped {
     );
   }
 
-  async send(data: any, circuitId: number = null) {
+  async send(data: any, circuitId: number = null, waitForResponse = false) {
     if (!circuitId) circuitId = Number(Object.keys(this.keys))[0];
     const keys = this.keys[`${circuitId}`];
     const { stream, messages } = this.activeStreams[circuitId];
@@ -182,6 +182,36 @@ export class Router extends Libp2pWrapped {
       data: cell,
       messages,
     });
+    if (waitForResponse) {
+      const encodedCell = await this.waitForSingularResponse(stream);
+      console.log(encodedCell);
+    }
+  }
+
+  async createHandlerForResponsesOnCircuit(circuitId: number) {
+    const keys = this.keys[`${circuitId}`];
+    const hmacLast = keys.hmac[keys.hmac.length - 1];
+    return async (data: Uint8Array, stream: Stream) => {
+      const decodedCell = Cell.decode(data);
+      const relayCell = RelayCell.from(
+        await keys.aes.reduce(async (a, aes) => {
+          return aes.decrypt(await a);
+        }, Promise.resolve(decodedCell.data as Uint8Array))
+      );
+      console.log(relayCell);
+      if (
+        !equals(
+          relayCell.digest,
+          (
+            await hmacLast.digest(relayCell.data.slice(0, relayCell.len))
+          ).subarray(0, 6)
+        )
+      )
+        throw new Error("relay digest does not match");
+      const baseMessage = protocol.BaseMessage.decode(relayCell.data);
+      if (this.baseMessageHandlers[baseMessage["type"]])
+        this.baseMessageHandlers[baseMessage["type"]]({ stream, baseMessage });
+    };
   }
 
   async decodeReturnCell(returnCell: Cell, keys: Key) {
@@ -285,6 +315,7 @@ export class Router extends Libp2pWrapped {
       await pipe([this.advertiseKey.public.marshal()], encode(), stream.sink);
       const id = await this.build(3);
       await this.begin(p, id);
+      const handler = await this.createHandlerForResponsesOnCircuit(id);
       await this.send(
         protocol.BaseMessage.encode({
           type: "rendezvous/begin",
@@ -292,6 +323,10 @@ export class Router extends Libp2pWrapped {
         }).finish(),
         id
       );
+      this.handleResponsesOnChannel({
+        stream: this.activeStreams[id].stream,
+        handler,
+      });
       this.advertiseIds[p.toString()] = id;
     }, Promise.resolve());
   }
@@ -325,7 +360,6 @@ export class Router extends Libp2pWrapped {
     const circuitId = await this.build(3);
     //@ts-ignore
     this.rendezvousKeys[circuitId] = {};
-    console.log(pubKey);
     const { key, genSharedKey } = await generateEphemeralKeyPair("P-256");
     this.rendezvousKeys[circuitId].ecdhKey = { key, genSharedKey };
     this.rendezvousKeys[circuitId].key = rendezvousKey;

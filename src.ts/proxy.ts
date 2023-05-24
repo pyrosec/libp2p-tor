@@ -4,6 +4,7 @@ import type { BaseMessageHandler } from "./libp2p.wrapper";
 import { generateEphemeralKeyPair } from "@libp2p/crypto/keys";
 import type { ECDHKey } from "@libp2p/crypto/keys/interface";
 import { pipe } from "it-pipe";
+import type { Pushable } from "it-pushable";
 import { encode, decode } from "it-length-prefixed";
 import { Multiaddr, multiaddr } from "@multiformats/multiaddr";
 import {
@@ -13,6 +14,7 @@ import {
   RelayCellCommand,
   PROTOCOLS,
 } from "./tor";
+import type { Stream } from "@libp2p/interface-connection";
 import { StreamHandler } from "@libp2p/interface-registrar";
 import { fromString, equals, toString } from "uint8arrays";
 import * as crypto from "@libp2p/crypto";
@@ -45,7 +47,10 @@ export class Proxy extends Libp2pWrapped {
       };
     }
   >;
-  private active: Record<number, Multiaddr>;
+  private active: Record<
+    number,
+    { addr: Multiaddr; messages?: Pushable<any>; stream?: Stream; end?: any }
+  >;
 
   constructor(registries: Multiaddr[]) {
     super();
@@ -77,16 +82,16 @@ export class Proxy extends Libp2pWrapped {
     stream,
     baseMessage,
   }) => {
-    console.log(toString(baseMessage.content), baseMessage.content);
     const cookie = await this.waitForResponseOnChannel(
       toString(baseMessage.content)
     );
+    console.log("cookie", cookie);
     await this.sendTorCell({
       stream,
       data: protocol.BaseMessage.encode({
         type: "rendezvous/cookie/receive",
         content: cookie,
-      }),
+      }).finish(),
     });
   };
   handleBaseMessageRendezvousCookie: BaseMessageHandler = async ({
@@ -95,8 +100,6 @@ export class Proxy extends Libp2pWrapped {
   }) => {
     const encryptedContent = baseMessage.content.slice(0, 256);
     const pubKey = baseMessage.content.slice(256);
-    console.log("received cookie");
-    console.log(toString(pubKey), pubKey);
     this.sendMessageToResponseChannel(toString(pubKey), encryptedContent);
     //TODO: ping pubkey circuit
     await this.sendTorCell({
@@ -215,19 +218,23 @@ export class Proxy extends Libp2pWrapped {
     relayCellData: Uint8Array;
   }) {
     const { aes, hmac } = this.keys[`${circuitId}`];
-    if (this.active[circuitId]) {
-      const stream = await this.dialProtocol(
-        this.active[circuitId],
-        PROTOCOLS.baseMessage
+    const activeInfo = this.active[circuitId];
+    if (activeInfo) {
+      console.log(activeInfo.stream);
+      if (!activeInfo.stream) {
+        const { stream, messages } = await this.sendTorCell({
+          peerId: this.active[circuitId].addr,
+          protocol: PROTOCOLS.baseMessage,
+          data: relayCellData,
+        });
+        this.active[circuitId].messages = messages;
+        this.active[circuitId].stream = stream;
+      } else {
+        this.active[circuitId].messages.push(relayCellData);
+      }
+      const returnData = await this.waitForSingularResponse(
+        this.active[circuitId].stream
       );
-      pipe([relayCellData], encode(), stream.sink);
-      const returnData = await pipe(stream.source, decode(), async (source) => {
-        let _d: Uint8Array;
-        for await (const data of source) {
-          _d = data.subarray();
-        }
-        return _d;
-      });
       return new Cell({
         command: CellCommand.RELAY,
         data: await aes.encrypt(
@@ -267,24 +274,28 @@ export class Proxy extends Libp2pWrapped {
     const { aes, hmac } = this.keys[`${circuitId}`];
     console.log("handling begin");
     const addr = multiaddr(relayCellData.slice(0, relayCellData.length));
+    const { stream, messages } = await this.sendTorCell({
+      peerId: addr,
+      protocol: PROTOCOLS.baseMessage,
+      data: protocol.BaseMessage.encode({
+        type: "string",
+        content: fromString("BEGIN"),
+      }).finish(),
+    });
     const returnData = protocol.BaseMessage.decode(
-      await this.sendTorCellWithResponse({
-        peerId: addr,
-        protocol: PROTOCOLS.baseMessage,
-        data: protocol.BaseMessage.encode({
-          type: "string",
-          content: fromString("BEGIN"),
-        }).finish(),
-      })
+      await this.waitForSingularResponse(stream)
     );
     let content: any;
     switch (returnData.type) {
       default:
         content = toString(returnData.content);
     }
-    const data = fromString("BEGUN");
+    const data = protocol.BaseMessage.encode({
+      content: fromString("BEGUN"),
+      type: "string",
+    }).finish();
     if (content == "BEGUN") {
-      this.active[circuitId] = addr;
+      this.active[circuitId] = { addr, stream, messages };
       return new Cell({
         command: CellCommand.RELAY,
         data: await aes.encrypt(

@@ -144,7 +144,6 @@ export class Libp2pWrapped extends EventEmitter {
             baseMessage,
           });
         }
-        break;
       }
     });
   };
@@ -155,6 +154,26 @@ export class Libp2pWrapped extends EventEmitter {
         resolve(data);
       });
     });
+  }
+
+  handleResponsesOnChannel({
+    stream,
+    handler,
+  }: {
+    stream: Stream;
+    handler: (data: Uint8Array, stream: Stream) => Promise<void>;
+  }) {
+    let endNow = false,
+      end = () => {
+        endNow = true;
+      };
+    pipe(stream.source, decode(), async (source) => {
+      for await (const data of source) {
+        if (endNow) break;
+        handler(data.subarray(), stream);
+      }
+    });
+    return { end };
   }
 
   sendMessageToChannel(channel: string, message: Uint8Array) {
