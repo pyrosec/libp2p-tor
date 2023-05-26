@@ -158,7 +158,7 @@ export class Router extends Libp2pWrapped {
     );
   }
 
-  async send(data: any, circuitId: number = null, waitForResponse = false) {
+  async send(data: any, circuitId: number = null) {
     if (!circuitId) circuitId = Number(Object.keys(this.keys))[0];
     const keys = this.keys[`${circuitId}`];
     const { stream, messages } = this.activeStreams[circuitId];
@@ -182,10 +182,6 @@ export class Router extends Libp2pWrapped {
       data: cell,
       messages,
     });
-    if (waitForResponse) {
-      const encodedCell = await this.waitForSingularResponse(stream);
-      console.log(encodedCell);
-    }
   }
 
   async createHandlerForResponsesOnCircuit(circuitId: number) {
@@ -193,12 +189,12 @@ export class Router extends Libp2pWrapped {
     const hmacLast = keys.hmac[keys.hmac.length - 1];
     return async (data: Uint8Array, stream: Stream) => {
       const decodedCell = Cell.decode(data);
+      console.log(decodedCell);
       const relayCell = RelayCell.from(
         await keys.aes.reduce(async (a, aes) => {
           return aes.decrypt(await a);
         }, Promise.resolve(decodedCell.data as Uint8Array))
       );
-      console.log(relayCell);
       if (
         !equals(
           relayCell.digest,
@@ -381,7 +377,6 @@ export class Router extends Libp2pWrapped {
     finalPayload.set(encryptedPayload2, encryptedPayload1.length);
     finalPayload.set(pubKey, 256);
     await this.begin(peer.multiaddrs[1], circuitId);
-    console.log("sending cookie");
     await this.send(
       protocol.BaseMessage.encode({
         type: "rendezvous/cookie",
