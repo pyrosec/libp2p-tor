@@ -204,9 +204,11 @@ export class Router extends Libp2pWrapped {
         )
       )
         throw new Error("relay digest does not match");
+      if (relayCell.command == RelayCellCommand.END) return false;
       const baseMessage = protocol.BaseMessage.decode(relayCell.data);
       if (this.baseMessageHandlers[baseMessage["type"]])
         this.baseMessageHandlers[baseMessage["type"]]({ stream, baseMessage });
+      return true;
     };
   }
 
@@ -256,13 +258,11 @@ export class Router extends Libp2pWrapped {
       }).finish(),
       protocol: PROTOCOLS.message,
     });
-    const res = await this.waitForSingularResponse(stream);
-    const resultCell = await this.decodeReturnCell(
-      protocol.Cell.decode(res),
-      keys
-    );
-    if (resultCell.command == RelayCellCommand.END)
-      throw new Error("Couldn't begin the circuit");
+    const handler = await this.createHandlerForResponsesOnCircuit(circuitId);
+    this.handleResponsesOnChannel({
+      stream,
+      handler,
+    });
     this.activeStreams[circuitId] = { stream, messages };
   }
 
@@ -311,7 +311,6 @@ export class Router extends Libp2pWrapped {
       await pipe([this.advertiseKey.public.marshal()], encode(), stream.sink);
       const id = await this.build(3);
       await this.begin(p, id);
-      const handler = await this.createHandlerForResponsesOnCircuit(id);
       await this.send(
         protocol.BaseMessage.encode({
           type: "rendezvous/begin",
@@ -319,10 +318,6 @@ export class Router extends Libp2pWrapped {
         }).finish(),
         id
       );
-      this.handleResponsesOnChannel({
-        stream: this.activeStreams[id].stream,
-        handler,
-      });
       this.advertiseIds[p.toString()] = id;
     }, Promise.resolve());
   }

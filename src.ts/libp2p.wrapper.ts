@@ -162,7 +162,7 @@ export class Libp2pWrapped extends EventEmitter {
     handler,
   }: {
     stream: Stream;
-    handler: (data: Uint8Array, stream: Stream) => Promise<void>;
+    handler: (data: Uint8Array, stream: Stream) => Promise<any>;
   }) {
     let endNow = false,
       end = () => {
@@ -171,7 +171,8 @@ export class Libp2pWrapped extends EventEmitter {
     pipe(stream.source, decode(), async (source) => {
       for await (const data of source) {
         if (endNow) break;
-        handler(data.subarray(), stream);
+        const res = await handler(data.subarray(), stream);
+        if (res === false) break;
       }
     });
     return { end };
