@@ -170,12 +170,23 @@ export class Proxy extends Libp2pWrapped {
                 relayCell: RelayCell.from(
                   await aes.decrypt(cell.data as Uint8Array)
                 ),
+                stream,
               })
             ).encode();
-            await this.sendTorCell({
-              stream,
-              data: returnCell,
-            });
+            if (!this.active[cell.circuitId]) {
+              const { messages: _messages } = await this.sendTorCell({
+                stream,
+                data: returnCell,
+              });
+
+              this.active[cell.circuitId] = {
+                addr: null,
+                messages: _messages,
+                stream: stream,
+              };
+            } else {
+              this.active[cell.circuitId].messages.push(returnCell);
+            }
           } else {
             if (!this.active[nextHop.circuitId]) {
               console.log("here");
@@ -220,6 +231,7 @@ export class Proxy extends Libp2pWrapped {
   handleNextHopInfo(aes: crypto.aes.AESCipher, circuitId: number) {
     return async (data: Uint8Array, stream: Stream) => {
       const cell = Cell.decode(data);
+      console.log("return cell received");
       const returnCell = protocol.Cell.encode({
         command: CellCommand.RELAY,
         circuitId: cell.circuitId,
@@ -240,9 +252,11 @@ export class Proxy extends Libp2pWrapped {
   async handleRelayCell({
     circuitId,
     relayCell,
+    stream,
   }: {
     circuitId: number;
     relayCell: RelayCell;
+    stream?: Stream;
   }) {
     const { hmac } = this.keys[`${circuitId}`];
     const relayCellData = relayCell.data.subarray(0, relayCell.len);
@@ -253,10 +267,10 @@ export class Proxy extends Libp2pWrapped {
       return await this.handleRelayExtend({ circuitId, relayCellData });
     }
     if (relayCell.command == RelayCellCommand.BEGIN) {
-      return await this.handleRelayBegin({ circuitId, relayCellData });
+      return await this.handleRelayBegin({ circuitId, relayCellData, stream });
     }
     if (relayCell.command == RelayCellCommand.DATA) {
-      return await this.handleRelayData({ circuitId, relayCellData });
+      return await this.handleRelayData({ circuitId, relayCellData, stream });
     }
   }
   async handleRelayData({
@@ -265,6 +279,7 @@ export class Proxy extends Libp2pWrapped {
   }: {
     circuitId: number;
     relayCellData: Uint8Array;
+    stream?: Stream;
   }) {
     const { aes, hmac } = this.keys[`${circuitId}`];
     const activeInfo = this.active[circuitId];
@@ -280,23 +295,6 @@ export class Proxy extends Libp2pWrapped {
       } else {
         this.active[circuitId].messages.push(relayCellData);
       }
-      const returnData = await this.waitForSingularResponse(
-        this.active[circuitId].stream
-      );
-      console.log(returnData);
-      return new Cell({
-        command: CellCommand.RELAY,
-        data: await aes.encrypt(
-          new RelayCell({
-            streamId: circuitId,
-            data: returnData,
-            len: returnData.length,
-            digest: await hmac.digest(returnData),
-            command: RelayCellCommand.DATA,
-          }).encode()
-        ),
-        circuitId,
-      });
     }
     return new Cell({
       command: CellCommand.RELAY,
@@ -318,6 +316,7 @@ export class Proxy extends Libp2pWrapped {
   }: {
     circuitId: number;
     relayCellData: Uint8Array;
+    stream?: Stream;
   }) {
     //change this so that the stream is kept active throughout the relay
     const { aes, hmac } = this.keys[`${circuitId}`];
