@@ -259,11 +259,11 @@ export class Router extends Libp2pWrapped {
       protocol: PROTOCOLS.message,
     });
     const handler = await this.createHandlerForResponsesOnCircuit(circuitId);
+    this.activeStreams[circuitId] = { stream, messages };
     this.handleResponsesOnChannel({
       stream,
       handler,
     });
-    this.activeStreams[circuitId] = { stream, messages };
   }
 
   async create() {
@@ -311,6 +311,7 @@ export class Router extends Libp2pWrapped {
       await pipe([this.advertiseKey.public.marshal()], encode(), stream.sink);
       const id = await this.build(3);
       await this.begin(p, id);
+      console.log("begun", id);
       await this.send(
         protocol.BaseMessage.encode({
           type: "rendezvous/begin",
@@ -372,6 +373,7 @@ export class Router extends Libp2pWrapped {
     finalPayload.set(encryptedPayload2, encryptedPayload1.length);
     finalPayload.set(pubKey, 256);
     await this.begin(peer.multiaddrs[1], circuitId);
+    console.log("sending rendezvous cookie");
     await this.send(
       protocol.BaseMessage.encode({
         type: "rendezvous/cookie",

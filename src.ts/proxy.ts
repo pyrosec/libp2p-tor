@@ -178,6 +178,7 @@ export class Proxy extends Libp2pWrapped {
             });
           } else {
             if (!this.active[nextHop.circuitId]) {
+              console.log("here");
               const { messages: nextHopMessages, stream: nextHopStream } =
                 await this.sendTorCell({
                   peerId: nextHop.multiaddr,
@@ -198,6 +199,16 @@ export class Proxy extends Libp2pWrapped {
                 stream: nextHopStream,
                 handler: this.handleNextHopInfo(aes, nextHop.circuitId),
               });
+            } else {
+              console.log("pushing tor cell to active hop");
+              const { messages } = this.active[nextHop.circuitId];
+              messages.push(
+                protocol.Cell.encode({
+                  circuitId: nextHop.circuitId,
+                  data: await aes.decrypt(cell.data as Uint8Array),
+                  command: CellCommand.RELAY,
+                })
+              );
             }
           }
         }
