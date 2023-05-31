@@ -249,6 +249,14 @@ export class Proxy extends Libp2pWrapped {
     };
   }
 
+  handleBaseMessageReceive(
+    aes: crypto.aes.AESCipher,
+    circuitId: number,
+    hmac: any
+  ) {
+    return async (data: Uint8Array, stream: Stream) => {};
+  }
+
   async handleRelayCell({
     circuitId,
     relayCell,
@@ -297,11 +305,13 @@ export class Proxy extends Libp2pWrapped {
           protocol: PROTOCOLS.baseMessage,
           data: relayCellData,
         });
+
         this.active[circuitId].messages = messages;
         this.active[circuitId].stream = stream;
       } else {
         this.active[circuitId].messages.push(relayCellData);
       }
+      return undefined;
     }
     return new Cell({
       command: CellCommand.RELAY,
@@ -339,48 +349,11 @@ export class Proxy extends Libp2pWrapped {
         content: fromString("BEGIN"),
       }).finish(),
     });
-    const returnData = protocol.BaseMessage.decode(
-      await this.waitForSingularResponse(stream)
-    );
-    let content: any;
-    switch (returnData.type) {
-      default:
-        content = toString(returnData.content);
-    }
-    const data = protocol.BaseMessage.encode({
-      content: fromString("BEGUN"),
-      type: "string",
-    }).finish();
-    if (content == "BEGUN") {
-      this.active[circuitId] = { addr, stream, messages };
-      return new Cell({
-        command: CellCommand.RELAY,
-        data: await aes.encrypt(
-          new RelayCell({
-            command: RelayCellCommand.CONNECTED,
-            data,
-            streamId: circuitId,
-            digest: await hmac.digest(data),
-            len: data.length,
-          }).encode()
-        ),
-        circuitId,
-      });
-    } else {
-      return new Cell({
-        command: CellCommand.RELAY,
-        data: await aes.encrypt(
-          new RelayCell({
-            command: RelayCellCommand.END,
-            data,
-            streamId: circuitId,
-            digest: await hmac.digest(data),
-            len: data.length,
-          }).encode()
-        ),
-        circuitId,
-      });
-    }
+    this.handleResponsesOnChannel({
+      stream,
+      handler: this.handleBaseMessageReceive(aes, circuitId, hmac),
+    });
+    this.active[circuitId] = { addr, stream, messages };
   }
   async handleRelayExtend({
     circuitId,

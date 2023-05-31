@@ -120,7 +120,7 @@ export class Libp2pWrapped extends EventEmitter {
     baseMessage,
   }) => {
     let content = toString(baseMessage["content"]);
-
+    console.log(content);
     if (content == "BEGIN") {
       await this.sendTorCell({
         stream,
