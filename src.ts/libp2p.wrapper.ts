@@ -20,6 +20,7 @@ type SendTorCellInput = {
   peerId: Multiaddr | PeerId;
   protocol: string;
   data: any;
+  finish?: boolean;
 };
 
 type SendTorCellInputWithStream = {
@@ -112,6 +113,9 @@ export class Libp2pWrapped extends EventEmitter {
     }
     pipe(messages, encode(), stream.sink);
     messages.push(input.data);
+    if ("finish" in input && input.finish === true) {
+      messages.end();
+    }
     return { stream, messages };
   }
 
