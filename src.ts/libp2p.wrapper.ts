@@ -90,11 +90,12 @@ export class Libp2pWrapped extends EventEmitter {
   }
 
   async waitForSingularResponse(stream: Stream) {
-    return await pipe(stream.source, decode(), async (source) => {
+    return pipe(stream.source, decode(), async (source) => {
       let ret: Uint8Array;
       // breaks on first iteration
       for await (const data of source) {
         ret = data.subarray();
+        console.log(ret);
         break;
       }
       return ret;
@@ -174,6 +175,7 @@ export class Libp2pWrapped extends EventEmitter {
       };
     pipe(stream.source, decode(), async (source) => {
       for await (const data of source) {
+        console.log("received data");
         if (endNow) break;
         const res = await handler(data.subarray(), stream);
         if (res === false) break;

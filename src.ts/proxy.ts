@@ -176,7 +176,7 @@ export class Proxy extends Libp2pWrapped {
               stream,
             });
             if (returnCell) {
-              if (!this.active[cell.circuitId]) {
+              if (!this.active[cell.circuitId].prevMessages) {
                 const { messages: _messages } = await this.sendTorCell({
                   stream,
                   data: returnCell.encode(),
@@ -188,6 +188,7 @@ export class Proxy extends Libp2pWrapped {
                   prevStream: stream,
                 };
               } else {
+                console.log(returnCell);
                 this.active[cell.circuitId].prevMessages.push(
                   returnCell.encode()
                 );
@@ -212,10 +213,6 @@ export class Proxy extends Libp2pWrapped {
                 stream: nextHopStream,
                 prevStream: stream,
               };
-              this.handleResponsesOnChannel({
-                stream: nextHopStream,
-                handler: this.handleNextHopInfo(aes, cell.circuitId),
-              });
             } else {
               console.log("pushing tor cell to active hop");
               const { messages } = this.active[nextHop.circuitId];
@@ -442,6 +439,10 @@ export class Proxy extends Libp2pWrapped {
         ),
       });
     }
+    this.handleResponsesOnChannel({
+      stream: stream,
+      handler: this.handleNextHopInfo(aes, circuitId),
+    });
     const returnDigest = await hmac.digest(returnData.data as Uint8Array);
     return new Cell({
       circuitId,

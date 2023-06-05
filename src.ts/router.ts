@@ -112,39 +112,18 @@ export class Router extends Libp2pWrapped {
       .reduce(async (a, aes, i) => {
         return await aes.encrypt(await a);
       }, Promise.resolve(_relay));
-    const proxy = this.keys[circId].hops[0];
-    const ret = await this.sendTorCellWithResponse({
-      peerId: proxy,
-      protocol: PROTOCOLS.message,
-      data: protocol.Cell.encode({
+    this.activeStreams[circId].messages.push(
+      protocol.Cell.encode({
         command: CellCommand.RELAY,
         circuitId: circId,
         data: encryptedRelay,
-      }).finish(),
-    });
-    const returnCell = Cell.decode(ret);
-    const returnRelayCell = RelayCell.from(
-      await this.keys[`${circId}`].aes.reduce(async (a, aes) => {
-        return await aes.decrypt(await a);
-      }, Promise.resolve(returnCell.data as Uint8Array))
+      }).finish()
     );
-    if (returnRelayCell.command == RelayCellCommand.END)
-      throw new Error("error extending");
-    const cellKey = returnRelayCell.data.subarray(0, 65);
-    const cellDigest = returnRelayCell.data.subarray(65, 65 + 32);
+    const returnData = await this.waitForResponseOnChannel("extended");
+    const cellKey = returnData.subarray(0, 65);
+    const cellDigest = returnData.subarray(65, 65 + 32);
     const cellSharedKey = await genSharedKey(cellKey);
     const cellHmac = await crypto.hmac.create("SHA256", cellSharedKey);
-    const prevHmac =
-      this.keys[`${circId}`].hmac[this.keys[`${circId}`].hmac.length - 1];
-    const digestInput = new Uint8Array(returnRelayCell.len);
-    digestInput.set(returnRelayCell.data.slice(0, returnRelayCell.len));
-    if (
-      !equals(
-        returnRelayCell.digest,
-        (await prevHmac.digest(digestInput)).subarray(0, 6)
-      )
-    )
-      throw new Error("relay digest does not match");
     this.keys[`${circId}`].hmac.push(cellHmac);
     if (
       !equals(cellDigest, Uint8Array.from(await cellHmac.digest(cellSharedKey)))
@@ -185,11 +164,13 @@ export class Router extends Libp2pWrapped {
   }
 
   async createHandlerForResponsesOnCircuit(circuitId: number) {
-    const keys = this.keys[`${circuitId}`];
-    const hmacLast = keys.hmac[keys.hmac.length - 1];
     return async (data: Uint8Array, stream: Stream) => {
       const decodedCell = Cell.decode(data);
-      console.log(decodedCell);
+      if (decodedCell.command === CellCommand.CREATED) {
+        this.sendMessageToResponseChannel("created", data);
+      }
+      const keys = this.keys[`${circuitId}`];
+      const hmacLast = keys.hmac[keys.hmac.length - 1];
       const relayCell = RelayCell.from(
         await keys.aes.reduce(async (a, aes) => {
           return aes.decrypt(await a);
@@ -205,6 +186,10 @@ export class Router extends Libp2pWrapped {
       )
         throw new Error("relay digest does not match");
       if (relayCell.command == RelayCellCommand.END) return false;
+      if (relayCell.command == RelayCellCommand.EXTENDED) {
+        this.sendMessageToResponseChannel("extended", data);
+        return true;
+      }
       const baseMessage = protocol.BaseMessage.decode(relayCell.data);
       if (this.baseMessageHandlers[baseMessage["type"]])
         this.baseMessageHandlers[baseMessage["type"]]({ stream, baseMessage });
@@ -249,21 +234,14 @@ export class Router extends Libp2pWrapped {
     const encodedData = await [...keys.aes].reverse().reduce(async (a, aes) => {
       return await aes.encrypt(await a);
     }, Promise.resolve(relayCell));
-    const { stream, messages } = await this.sendTorCell({
-      peerId: keys.hops[0],
-      data: protocol.Cell.encode({
+    const { stream, messages } = this.activeStreams[circuitId];
+    messages.push(
+      protocol.Cell.encode({
         command: CellCommand.RELAY,
         circuitId,
         data: encodedData,
-      }).finish(),
-      protocol: PROTOCOLS.message,
-    });
-    const handler = await this.createHandlerForResponsesOnCircuit(circuitId);
-    this.activeStreams[circuitId] = { stream, messages };
-    this.handleResponsesOnChannel({
-      stream,
-      handler,
-    });
+      }).finish()
+    );
   }
 
   async create() {
@@ -271,7 +249,7 @@ export class Router extends Libp2pWrapped {
     const { genSharedKey, key } = await generateEphemeralKeyPair("P-256");
     const proxy = this.proxies[0];
     const encryptedKey = Uint8Array.from(await proxy.publicKey.encrypt(key));
-    const ret = await this.sendTorCellWithResponse({
+    const { stream, messages } = await this.sendTorCell({
       peerId: proxy.addr,
       protocol: PROTOCOLS.message,
       data: protocol.Cell.encode({
@@ -280,7 +258,13 @@ export class Router extends Libp2pWrapped {
         circuitId: circId,
       }).finish(),
     });
-    const cell = Cell.decode(ret);
+    const handler = await this.createHandlerForResponsesOnCircuit(circId);
+    this.handleResponsesOnChannel({
+      stream,
+      handler,
+    });
+    const cell = Cell.decode(await this.waitForResponseOnChannel("created"));
+    console.log(cell);
     const proxyEcdhKey = (cell.data as Uint8Array).slice(0, 65);
     const digest = (cell.data as Uint8Array).slice(65, 65 + 32);
     const sharedKey = await genSharedKey(proxyEcdhKey);
@@ -299,6 +283,10 @@ export class Router extends Libp2pWrapped {
       hops: [proxy.addr],
       aes: [await crypto.aes.create(sharedKey, iv)],
       hmac: [hmac],
+    };
+    this.activeStreams[circId] = {
+      messages,
+      stream,
     };
     return circId;
   }
