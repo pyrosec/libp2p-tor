@@ -166,8 +166,10 @@ export class Router extends Libp2pWrapped {
   createHandlerForResponsesOnCircuit = (circuitId: number) => {
     return async (data: Uint8Array, stream: Stream) => {
       const decodedCell = Cell.decode(data);
+      console.log(decodedCell);
       if (decodedCell.command === CellCommand.CREATED) {
         this.sendMessageToResponseChannel("created", data);
+        return true;
       }
       const keys = this.keys[`${circuitId}`];
       const hmacLast = keys.hmac[keys.hmac.length - 1];
@@ -264,7 +266,6 @@ export class Router extends Libp2pWrapped {
       handler,
     });
     const cell = Cell.decode(await this.waitForResponseOnChannel("created"));
-    console.log(cell);
     const proxyEcdhKey = (cell.data as Uint8Array).slice(0, 65);
     const digest = (cell.data as Uint8Array).slice(65, 65 + 32);
     const sharedKey = await genSharedKey(proxyEcdhKey);

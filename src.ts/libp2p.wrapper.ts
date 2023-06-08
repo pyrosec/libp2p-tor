@@ -109,9 +109,6 @@ export class Libp2pWrapped extends EventEmitter {
     }
     pipe(messages, encode(), stream.sink);
     messages.push(input.data);
-    if ("finish" in input && input.finish === true) {
-      messages.end();
-    }
     return { stream, messages };
   }
 
@@ -134,7 +131,7 @@ export class Libp2pWrapped extends EventEmitter {
 
   handleBaseMessage: StreamHandler = async ({ stream }) => {
     console.log("handling base message");
-    await pipe(stream.source, decode(), async (source) => {
+    pipe(stream.source, decode(), async (source) => {
       for await (const _data of source) {
         const data = _data.subarray();
         const baseMessage = protocol.BaseMessage.decode(data);
@@ -164,19 +161,13 @@ export class Libp2pWrapped extends EventEmitter {
     stream: Stream;
     handler: (data: Uint8Array, stream: Stream) => Promise<any>;
   }) {
-    let endNow = false,
-      end = () => {
-        endNow = true;
-      };
     pipe(stream.source, decode(), async (source) => {
       for await (const data of source) {
         console.log("received data");
-        if (endNow) break;
         const res = await handler(data.subarray(), stream);
         if (res === false) break;
       }
     });
-    return { end };
   }
 
   sendMessageToChannel(channel: string, message: Uint8Array) {

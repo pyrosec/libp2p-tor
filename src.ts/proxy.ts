@@ -161,13 +161,14 @@ export class Proxy extends Libp2pWrapped {
           });
           //@ts-ignore
           this.active[cell.circuitId] = {
-            prevMessages: messages,
             prevStream: stream,
+            prevMessages: messages,
           };
         } else if (cell.command == CellCommand.RELAY) {
           const aes = this.keys[`${cell.circuitId}`].aes;
           const nextHop = this.keys[`${cell.circuitId}`].nextHop;
           if (nextHop == undefined) {
+            // returncell only exists if its relaycellcommand.extend
             returnCell = await this.handleRelayCell({
               circuitId: cell.circuitId,
               relayCell: RelayCell.from(
@@ -188,15 +189,14 @@ export class Proxy extends Libp2pWrapped {
                   prevStream: stream,
                 };
               } else {
-                console.log(returnCell);
+                console.log(this.active[cell.circuitId].prevMessages);
                 this.active[cell.circuitId].prevMessages.push(
                   returnCell.encode()
                 );
               }
             }
           } else {
-            if (!this.active[nextHop.circuitId]) {
-              console.log("here");
+            if (!this.active[cell.circuitId]) {
               const { messages: nextHopMessages, stream: nextHopStream } =
                 await this.sendTorCell({
                   peerId: nextHop.multiaddr,
@@ -207,7 +207,7 @@ export class Proxy extends Libp2pWrapped {
                     command: CellCommand.RELAY,
                   }).finish(),
                 });
-              this.active[nextHop.circuitId] = {
+              this.active[cell.circuitId] = {
                 addr: nextHop.multiaddr,
                 messages: nextHopMessages,
                 stream: nextHopStream,
@@ -215,7 +215,7 @@ export class Proxy extends Libp2pWrapped {
               };
             } else {
               console.log("pushing tor cell to active hop");
-              const { messages } = this.active[nextHop.circuitId];
+              const { messages } = this.active[cell.circuitId];
               messages.push(
                 protocol.Cell.encode({
                   circuitId: nextHop.circuitId,
@@ -233,23 +233,23 @@ export class Proxy extends Libp2pWrapped {
   handleNextHopInfo(aes: crypto.aes.AESCipher, circuitId: number) {
     return async (data: Uint8Array, stream: Stream) => {
       const cell = Cell.decode(data);
-      const circId = cell.circuitId;
       console.log("return cell received");
       const returnCell = protocol.Cell.encode({
         command: CellCommand.RELAY,
         circuitId: circuitId,
         data: await aes.encrypt(cell.data as Uint8Array),
       }).finish();
-      console.log(this.active[circId]);
-      if (this.active[circId].prevMessages) {
-        this.active[circId].prevMessages.push(returnCell);
+      console.log(this.active[circuitId]);
+      if (this.active[circuitId].prevMessages) {
+        this.active[circuitId].prevMessages.push(returnCell);
       } else {
         const { messages } = await this.sendTorCell({
-          stream: this.active[circId].prevStream,
+          stream: this.active[circuitId].prevStream,
           data: returnCell,
         });
-        this.active[circId].prevMessages = messages;
+        this.active[circuitId].prevMessages = messages;
       }
+      return true;
     };
   }
 
@@ -424,6 +424,7 @@ export class Proxy extends Libp2pWrapped {
     }
     this.active[circuitId] = details;
     const returnData = Cell.decode(await this.waitForSingularResponse(stream));
+    console.log(returnData);
     if (returnData.command !== CellCommand.CREATED) {
       return new Cell({
         circuitId,
