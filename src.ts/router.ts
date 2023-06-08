@@ -163,7 +163,7 @@ export class Router extends Libp2pWrapped {
     });
   }
 
-  async createHandlerForResponsesOnCircuit(circuitId: number) {
+  createHandlerForResponsesOnCircuit = (circuitId: number) => {
     return async (data: Uint8Array, stream: Stream) => {
       const decodedCell = Cell.decode(data);
       if (decodedCell.command === CellCommand.CREATED) {
@@ -195,7 +195,7 @@ export class Router extends Libp2pWrapped {
         this.baseMessageHandlers[baseMessage["type"]]({ stream, baseMessage });
       return true;
     };
-  }
+  };
 
   async decodeReturnCell(returnCell: Cell, keys: Key) {
     const returnData = await keys.aes.reduce(async (a, _aes) => {
@@ -258,7 +258,7 @@ export class Router extends Libp2pWrapped {
         circuitId: circId,
       }).finish(),
     });
-    const handler = await this.createHandlerForResponsesOnCircuit(circId);
+    const handler = this.createHandlerForResponsesOnCircuit(circId);
     this.handleResponsesOnChannel({
       stream,
       handler,

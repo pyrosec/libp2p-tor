@@ -90,14 +90,10 @@ export class Libp2pWrapped extends EventEmitter {
   }
 
   async waitForSingularResponse(stream: Stream) {
-    return await new Promise((resolve, reject) => {
-      pipe(stream.source, decode(), async (source) => {
-        try {
-          resolve((await (source[Symbol.iterator]()).next()).value.subarray());
-	} catch (e) {
-          reject(e);
-	}
-      });
+    return await new Promise(async (resolve, reject) => {
+      const source = pipe(stream.source, decode());
+      const d = await source[Symbol.asyncIterator]().next();
+      resolve(d.value.subarray());
     });
   }
   async pushTorCell(input: PushTorCellInput) {
