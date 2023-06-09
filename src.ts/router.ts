@@ -140,7 +140,7 @@ export class Router extends Libp2pWrapped {
   async send(data: any, circuitId: number = null) {
     if (!circuitId) circuitId = Number(Object.keys(this.keys))[0];
     const keys = this.keys[`${circuitId}`];
-    const { stream, messages } = this.activeStreams[circuitId];
+    const { messages } = this.activeStreams[circuitId];
     const hmacLast = keys.hmac[keys.hmac.length - 1];
     const relayCell = new RelayCell({
       command: RelayCellCommand.DATA,
@@ -166,7 +166,6 @@ export class Router extends Libp2pWrapped {
   createHandlerForResponsesOnCircuit = (circuitId: number) => {
     return async (data: Uint8Array, stream: Stream) => {
       const decodedCell = Cell.decode(data);
-      console.log(decodedCell);
       if (decodedCell.command === CellCommand.CREATED) {
         this.sendMessageToResponseChannel("created", data);
         return true;
@@ -189,12 +188,15 @@ export class Router extends Libp2pWrapped {
         throw new Error("relay digest does not match");
       if (relayCell.command == RelayCellCommand.END) return false;
       if (relayCell.command == RelayCellCommand.EXTENDED) {
-        this.sendMessageToResponseChannel("extended", data);
+        this.sendMessageToResponseChannel("extended", relayCell.data);
         return true;
       }
       const baseMessage = protocol.BaseMessage.decode(relayCell.data);
       if (this.baseMessageHandlers[baseMessage["type"]])
-        this.baseMessageHandlers[baseMessage["type"]]({ stream, baseMessage });
+        this.baseMessageHandlers[baseMessage["type"]]({
+          ...baseMessage,
+          circuitId: decodedCell.circuitId,
+        });
       return true;
     };
   };
@@ -244,6 +246,7 @@ export class Router extends Libp2pWrapped {
         data: encodedData,
       }).finish()
     );
+    await this.waitForResponseOnChannel("begin");
   }
 
   async create() {
@@ -305,6 +308,7 @@ export class Router extends Libp2pWrapped {
         protocol.BaseMessage.encode({
           type: "rendezvous/begin",
           content: this.advertiseKey.public.marshal(),
+          circuitId: 0,
         }).finish(),
         id
       );
@@ -320,10 +324,9 @@ export class Router extends Libp2pWrapped {
     return this.proxies[this.proxies.length - 1].addr.bytes;
   }
 
-  handleBaseMessageRendezvousCookieRecieve: BaseMessageHandler = async ({
-    stream,
-    baseMessage,
-  }) => {
+  handleBaseMessageRendezvousCookieRecieve: BaseMessageHandler = async (
+    baseMessage
+  ) => {
     console.log(baseMessage);
     this.emit(`rendezvous:response`, baseMessage);
     //TODO: write out how to create introduction point
@@ -367,6 +370,7 @@ export class Router extends Libp2pWrapped {
       protocol.BaseMessage.encode({
         type: "rendezvous/cookie",
         content: finalPayload,
+        circuitId: 0,
       }).finish(),
       circuitId
     );

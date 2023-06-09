@@ -9,6 +9,10 @@
         "type": {
           "type": "string",
           "id": 2
+        },
+        "circuitId": {
+          "type": "uint32",
+          "id": 3
         }
       }
     },

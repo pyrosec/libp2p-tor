@@ -3,6 +3,7 @@ syntax = "proto3";
 message BaseMessage {
   bytes content = 1;
   string type = 2;
+  uint32 circuitId = 3;
 }
 
 

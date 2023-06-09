@@ -32,7 +32,8 @@ type PushTorCellInput = {
   data: Uint8Array;
 };
 
-interface HandleTorCellInput {
+interface ActiveBaseMessages {
+  messages: Pushable<any>;
   stream: Stream;
 }
 
@@ -50,21 +51,21 @@ export async function createLibp2pNode(
   return await createLibp2p(options);
 }
 
-export type BaseMessageHandler = ({
-  stream,
-  baseMessage,
-}: {
-  stream: Stream;
-  baseMessage: { content: any; type: string };
-}) => Promise<void>;
+export type BaseMessageHandler = (baseMessage: {
+  content: any;
+  type: string;
+  circuitId: number;
+}) => Promise<any>;
 
 export class Libp2pWrapped extends EventEmitter {
   public _libp2p: Libp2p;
   public baseMessageHandlers: Record<string, BaseMessageHandler>;
+  public activeBaseMessages: Record<number, ActiveBaseMessages>;
 
   constructor(opts?: any) {
     super(opts);
     this.baseMessageHandlers = {};
+    this.activeBaseMessages = {};
   }
 
   async run(options: Libp2pOptions) {
@@ -112,21 +113,21 @@ export class Libp2pWrapped extends EventEmitter {
     return { stream, messages };
   }
 
-  handleBaseMessageString: BaseMessageHandler = async ({
-    stream,
-    baseMessage,
-  }) => {
+  handleBaseMessageString: BaseMessageHandler = async (baseMessage) => {
     let content = toString(baseMessage["content"]);
+
     console.log(content);
     if (content == "BEGIN") {
-      await this.sendTorCell({
-        stream,
-        data: protocol.BaseMessage.encode({
-          type: "string",
-          content: fromString("BEGUN"),
-        }).finish(),
-      });
+      return protocol.BaseMessage.encode({
+        type: "string",
+        content: fromString("BEGUN"),
+        circuitId: baseMessage.circuitId,
+      }).finish();
     }
+    if (content == "BEGUN") {
+      this.emit("begin:response", "BEGUN");
+    }
+    return false;
   };
 
   handleBaseMessage: StreamHandler = async ({ stream }) => {
@@ -135,12 +136,25 @@ export class Libp2pWrapped extends EventEmitter {
       for await (const _data of source) {
         const data = _data.subarray();
         const baseMessage = protocol.BaseMessage.decode(data);
-        console.log(baseMessage["type"]);
         if (baseMessage["type"] in this.baseMessageHandlers) {
-          await this.baseMessageHandlers[baseMessage["type"]]({
-            stream,
-            baseMessage,
-          });
+          const returnData = await this.baseMessageHandlers[
+            baseMessage["type"]
+          ](baseMessage);
+          if (returnData !== false) {
+            if (!this.activeBaseMessages[baseMessage.circuitId]) {
+              const { messages } = await this.sendTorCell({
+                stream,
+                data: returnData,
+              });
+              this.activeBaseMessages[Number(baseMessage.circuitId)] = {
+                stream,
+                messages,
+              };
+            } else
+              this.activeBaseMessages[
+                Number(baseMessage.circuitId)
+              ].messages.push(returnData);
+          }
         }
       }
     });
@@ -165,6 +179,7 @@ export class Libp2pWrapped extends EventEmitter {
       for await (const data of source) {
         console.log("received data");
         const res = await handler(data.subarray(), stream);
+        console.log(res);
         if (res === false) break;
       }
     });
