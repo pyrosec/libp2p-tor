@@ -109,7 +109,7 @@ export class Proxy extends Libp2pWrapped {
     //TODO: ping pubkey circuit
     return protocol.BaseMessage.encode({
       type: "string",
-      content: fromString("SUCCESS"),
+      content: fromString("RENDEZVOUS:SUCCESS"),
       circuitId: baseMessage.circuitId,
     }).finish();
   };

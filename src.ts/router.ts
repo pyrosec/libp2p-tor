@@ -318,6 +318,10 @@ export class Router extends Libp2pWrapped {
       );
       this.advertiseIds[p.toString()] = id;
     }, Promise.resolve());
+    this.on("rendezvous:response", (data) => {
+      //TODO: write this out
+      console.log(data);
+    });
   }
 
   async pickAdvertisePoints(): Promise<Multiaddr[]> {
@@ -333,6 +337,7 @@ export class Router extends Libp2pWrapped {
   ) => {
     console.log(baseMessage);
     this.emit(`rendezvous:response`, baseMessage);
+    return false;
     //TODO: write out how to create introduction point
   };
   async rendezvous(pubKey: Uint8Array) {

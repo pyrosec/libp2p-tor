@@ -178,10 +178,8 @@ export class Libp2pWrapped extends EventEmitter {
   }) {
     pipe(stream.source, decode(), async (source) => {
       for await (const data of source) {
-        console.log(this.type);
         console.log("received data");
         const res = await handler(data.subarray(), stream);
-        console.log(res);
         if (res === false) break;
       }
     });
