@@ -68,6 +68,7 @@ export class Router extends Libp2pWrapped {
     this.advertiseIds = {};
     this.rendezvousKeys = {};
     this.activeStreams = {};
+    this.type = "ROUTER";
   }
 
   async build(length: number = 1) {
@@ -191,7 +192,10 @@ export class Router extends Libp2pWrapped {
         this.sendMessageToResponseChannel("extended", relayCell.data);
         return true;
       }
-      const baseMessage = protocol.BaseMessage.decode(relayCell.data);
+      const baseMessage = protocol.BaseMessage.decode(
+        relayCell.data.slice(0, relayCell.len)
+      );
+      console.log(baseMessage);
       if (this.baseMessageHandlers[baseMessage["type"]])
         this.baseMessageHandlers[baseMessage["type"]]({
           ...baseMessage,

@@ -66,6 +66,7 @@ export class Proxy extends Libp2pWrapped {
     this.keys = {};
     this.torKey = null;
     this.active = {};
+    this.type = "PROXY";
   }
 
   async run(
@@ -376,13 +377,21 @@ export class Proxy extends Libp2pWrapped {
         circuitId: nextId,
       }).finish(),
     });
-    this.active[circuitId] = {
+    const details = {
       addr,
       stream,
       messages,
       baseMessageId: nextId,
       prevStream,
     };
+    if (this.active[circuitId]) {
+      this.active[circuitId].addr = addr;
+      this.active[circuitId].stream = stream;
+      this.active[circuitId].messages = messages;
+      this.active[circuitId].baseMessageId = nextId;
+    } else {
+      this.active[circuitId] = details;
+    }
     this.handleResponsesOnChannel({
       stream,
       handler: this.handleBaseMessageReceive(aes, circuitId, hmac),

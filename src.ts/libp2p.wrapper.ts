@@ -61,6 +61,7 @@ export class Libp2pWrapped extends EventEmitter {
   public _libp2p: Libp2p;
   public baseMessageHandlers: Record<string, BaseMessageHandler>;
   public activeBaseMessages: Record<number, ActiveBaseMessages>;
+  public type: string;
 
   constructor(opts?: any) {
     super(opts);
@@ -177,6 +178,7 @@ export class Libp2pWrapped extends EventEmitter {
   }) {
     pipe(stream.source, decode(), async (source) => {
       for await (const data of source) {
+        console.log(this.type);
         console.log("received data");
         const res = await handler(data.subarray(), stream);
         console.log(res);
