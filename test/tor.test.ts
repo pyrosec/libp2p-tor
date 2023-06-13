@@ -21,7 +21,9 @@ describe("tor", () => {
       proxies.push(new Proxy(registry._libp2p.getMultiaddrs()))
     );
     router = new Router(registry._libp2p.getMultiaddrs());
+    router.testId = 1;
     router2 = new Router(registry._libp2p.getMultiaddrs());
+    router2.testId = 2;
     await proxies.reduce(async (_, proxy) => {
       await proxy.run();
     }, Promise.resolve());

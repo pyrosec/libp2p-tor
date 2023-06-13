@@ -131,4 +131,9 @@ export const PROTOCOLS = {
   advertise: "/tor/1.0.0/advertise",
   register: "/tor/1.0.0/register",
   relays: "/tor/1.0.0/relays",
+  rendezvous: {
+    begin: "rendezvous/begin",
+    cookieRecieve: "rendezvous/cookie/receive",
+    cookie: "rendezvous/cookie",
+  },
 };

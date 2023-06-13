@@ -76,9 +76,9 @@ export class Proxy extends Libp2pWrapped {
       },
     }
   ) {
-    this.baseMessageHandlers["rendezvous/cookie"] =
+    this.baseMessageHandlers[PROTOCOLS.rendezvous.cookie] =
       this.handleBaseMessageRendezvousCookie;
-    this.baseMessageHandlers["rendezvous/begin"] =
+    this.baseMessageHandlers[PROTOCOLS.rendezvous.begin] =
       this.handleBaseMessageRendezvousBegin;
     await super.run(options);
     this.torKey = await crypto.keys.generateKeyPair("RSA", 1024);
@@ -95,7 +95,7 @@ export class Proxy extends Libp2pWrapped {
     );
     console.log("cookie", cookie);
     return protocol.BaseMessage.encode({
-      type: "rendezvous/cookie/receive",
+      type: PROTOCOLS.rendezvous.cookieRecieve,
       content: cookie,
       circuitId: baseMessage.circuitId,
     }).finish();
