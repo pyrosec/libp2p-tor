@@ -26,6 +26,23 @@ import { protocol } from "./protocol";
 
 const createHmac = crypto.hmac.create;
 
+type ActiveConnection = {
+  messages?: Pushable<any>;
+  stream?: Stream;
+  addr?: Multiaddr;
+  prevMessages?: Pushable<any>;
+  prevStream?: Stream;
+  activeStreams?: Record<
+    number,
+    {
+      messages?: Pushable<any>;
+      stream?: Stream;
+      baseMessageId?: number;
+      addr: Multiaddr;
+    }
+  >;
+};
+
 export class Proxy extends Libp2pWrapped {
   private torKey: PrivateKey;
   public registries: Multiaddr[];
@@ -47,18 +64,7 @@ export class Proxy extends Libp2pWrapped {
       };
     }
   >;
-  private active: Record<
-    number,
-    {
-      addr: Multiaddr;
-      messages?: Pushable<any>;
-      stream?: Stream;
-      end?: any;
-      prevMessages?: Pushable<any>;
-      prevStream?: Stream;
-      baseMessageId?: number;
-    }
-  >;
+  private active: Record<number, ActiveConnection>;
 
   constructor(registries: Multiaddr[]) {
     super();
@@ -80,6 +86,10 @@ export class Proxy extends Libp2pWrapped {
       this.handleBaseMessageRendezvousCookie;
     this.baseMessageHandlers[PROTOCOLS.rendezvous.begin] =
       this.handleBaseMessageRendezvousBegin;
+    this.baseMessageHandlers[PROTOCOLS.rendezvous.cookieAwait] =
+      this.handleBaseMessageRendezvousCookieAwait;
+    this.baseMessageHandlers[PROTOCOLS.rendezvous.cookieResponse] =
+      this.handleBaseMessageRendezvousCookieResponse;
     await super.run(options);
     this.torKey = await crypto.keys.generateKeyPair("RSA", 1024);
     await this.register();
@@ -114,6 +124,24 @@ export class Proxy extends Libp2pWrapped {
     }).finish();
   };
 
+  handleBaseMessageRendezvousCookieAwait: BaseMessageHandler = async (
+    baseMessage
+  ) => {
+    const cookie = baseMessage.content;
+    const content = await this.waitForResponseOnChannel(toString(cookie));
+    return protocol.BaseMessage.encode({
+      type: PROTOCOLS.rendezvous.cookieResponse,
+      content,
+      circuitId: baseMessage.circuitId,
+    });
+  };
+  handleBaseMessageRendezvousCookieResponse: BaseMessageHandler = async (
+    baseMessage
+  ) => {
+    const cookie = baseMessage.content.subarray(0, 32);
+    this.sendMessageToResponseChannel(toString(cookie), baseMessage.content);
+    return undefined;
+  };
   handleAdvertise: StreamHandler = async ({ stream }) => {
     const pubKey = await pipe(stream.source, decode(), async (source) => {
       let _pubKey: Uint8Array;
@@ -179,7 +207,6 @@ export class Proxy extends Libp2pWrapped {
                 });
 
                 this.active[cell.circuitId] = {
-                  addr: null,
                   prevMessages: _messages,
                   prevStream: stream,
                 };
@@ -252,6 +279,7 @@ export class Proxy extends Libp2pWrapped {
     hmac: any
   ) {
     return async (data: Uint8Array) => {
+      console.log(protocol.BaseMessage.decode(data));
       const returnData = new Cell({
         command: CellCommand.RELAY,
         circuitId,
@@ -282,12 +310,10 @@ export class Proxy extends Libp2pWrapped {
     circuitId,
     relayCell,
     stream,
-    nextCircuitId,
   }: {
     circuitId: number;
     relayCell: RelayCell;
     stream?: Stream;
-    nextCircuitId?: number;
   }) {
     const { hmac } = this.keys[`${circuitId}`];
     const relayCellData = relayCell.data.subarray(0, relayCell.len);
@@ -317,28 +343,25 @@ export class Proxy extends Libp2pWrapped {
     stream?: Stream;
   }) {
     const { aes, hmac } = this.keys[`${circuitId}`];
-    const activeInfo = this.active[circuitId];
     const decodedData = protocol.BaseMessage.decode(relayCellData);
-    const pushData = protocol.BaseMessage.encode({
-      type: decodedData.type,
-      content: decodedData.content,
-      circuitId: activeInfo.baseMessageId,
-    }).finish();
+    const activeInfo =
+      this.active[circuitId].activeStreams[decodedData.circuitId];
     if (activeInfo) {
       if (!activeInfo.messages) {
         const { stream, messages } = await this.sendTorCell({
           peerId: activeInfo.addr,
           protocol: PROTOCOLS.baseMessage,
-          data: pushData,
+          data: relayCellData,
         });
 
-        this.active[circuitId].messages = messages;
-        this.active[circuitId].stream = stream;
+        this.active[circuitId].activeStreams[decodedData.circuitId].messages =
+          messages;
+        this.active[circuitId].activeStreams[decodedData.circuitId].stream =
+          stream;
       } else {
-        activeInfo.messages.push(pushData);
+        activeInfo.messages.push(relayCellData);
       }
       return undefined;
-    } else {
     }
     return new Cell({
       command: CellCommand.RELAY,
@@ -378,17 +401,16 @@ export class Proxy extends Libp2pWrapped {
       }).finish(),
     });
     const details = {
-      addr,
-      stream,
-      messages,
-      baseMessageId: nextId,
       prevStream,
+      activeStreams: {
+        [nextId]: { stream, messages, baseMessageId: nextId, addr },
+      },
     };
     if (this.active[circuitId]) {
-      this.active[circuitId].addr = addr;
-      this.active[circuitId].stream = stream;
-      this.active[circuitId].messages = messages;
-      this.active[circuitId].baseMessageId = nextId;
+      this.active[circuitId].activeStreams = {
+        ...(this.active[circuitId].activeStreams || {}),
+        ...details.activeStreams,
+      };
     } else {
       this.active[circuitId] = details;
     }

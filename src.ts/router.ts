@@ -31,6 +31,7 @@ type Key = {
   aes: crypto.aes.AESCipher[];
   hmac: HmacType[];
   activeStream?: Stream;
+  circuitIds: Record<string, number>;
 };
 
 type RendezvousKey = {
@@ -140,7 +141,7 @@ export class Router extends Libp2pWrapped {
     );
   }
 
-  async send(data: any, circuitId: number = null) {
+  async send(data: any, circuitId: number) {
     if (!circuitId) circuitId = Number(Object.keys(this.keys))[0];
     const keys = this.keys[`${circuitId}`];
     const { messages } = this.activeStreams[circuitId];
@@ -198,10 +199,10 @@ export class Router extends Libp2pWrapped {
         relayCell.data.slice(0, relayCell.len)
       );
       if (this.baseMessageHandlers[baseMessage["type"]])
-        this.baseMessageHandlers[baseMessage["type"]]({
-          ...baseMessage,
-          circuitId: decodedCell.circuitId,
-        });
+        this.baseMessageHandlers[baseMessage["type"]](
+          baseMessage,
+          decodedCell.circuitId
+        );
       return true;
     };
   };
@@ -243,7 +244,7 @@ export class Router extends Libp2pWrapped {
     const encodedData = await [...keys.aes].reverse().reduce(async (a, aes) => {
       return await aes.encrypt(await a);
     }, Promise.resolve(relayCell));
-    const { stream, messages } = this.activeStreams[circuitId];
+    const { messages } = this.activeStreams[circuitId];
     messages.push(
       protocol.Cell.encode({
         command: CellCommand.RELAY,
@@ -251,7 +252,12 @@ export class Router extends Libp2pWrapped {
         data: encodedData,
       }).finish()
     );
-    await this.waitForResponseOnChannel("begin");
+    const cid = Number(await this.waitForResponseOnChannel("begin"));
+    if (!this.keys[`${circuitId}`].circuitIds)
+      this.keys[`${circuitId}`].circuitIds = {};
+
+    this.keys[`${circuitId}`].circuitIds[peer.toString()] = cid;
+    return cid;
   }
 
   async create() {
@@ -292,6 +298,7 @@ export class Router extends Libp2pWrapped {
       hops: [proxy.addr],
       aes: [await crypto.aes.create(sharedKey, iv)],
       hmac: [hmac],
+      circuitIds: {},
     };
     this.activeStreams[circId] = {
       messages,
@@ -307,13 +314,13 @@ export class Router extends Libp2pWrapped {
       const stream = await this.dialProtocol(p, PROTOCOLS.advertise);
       await pipe([this.advertiseKey.public.marshal()], encode(), stream.sink);
       const id = await this.build(3);
-      await this.begin(p, id);
+      const bid = await this.begin(p, id);
       console.log("begun", id);
       await this.send(
         protocol.BaseMessage.encode({
           type: PROTOCOLS.rendezvous.begin,
           content: this.advertiseKey.public.marshal(),
-          circuitId: 0,
+          circuitId: bid,
         }).finish(),
         id
       );
@@ -322,7 +329,6 @@ export class Router extends Libp2pWrapped {
     this.on("rendezvous:response", async (data) => {
       //TODO: write this out
       console.log("response data received");
-      const payload = Uint8Array.from(data.content);
 
       //@ts-ignore
       const payload1 = await this.advertiseKey.decrypt(
@@ -352,12 +358,13 @@ export class Router extends Libp2pWrapped {
     return this.proxies.map((d) => d.addr).slice(0, 2);
   }
 
-  async pickRendezvousPoint(): Promise<Uint8Array> {
-    return this.proxies[this.proxies.length - 1].addr.bytes;
+  async pickRendezvousPoint(): Promise<Multiaddr> {
+    return this.proxies[this.proxies.length - 1].addr;
   }
 
   handleBaseMessageRendezvousCookieRecieve: BaseMessageHandler = async (
-    baseMessage
+    baseMessage,
+    circuitId
   ) => {
     this.emit(`rendezvous:response`, baseMessage);
     return false;
@@ -391,18 +398,29 @@ export class Router extends Libp2pWrapped {
     //162
 
     const encryptedPayload1 = Uint8Array.from(_pubKey.encrypt(payload));
-    const encryptedPayload2 = Uint8Array.from(_pubKey.encrypt(rendezvousPoint));
+    const encryptedPayload2 = Uint8Array.from(
+      _pubKey.encrypt(rendezvousPoint.bytes)
+    );
     const finalPayload = new Uint8Array(256 + pubKey.length);
     finalPayload.set(encryptedPayload1);
     finalPayload.set(encryptedPayload2, encryptedPayload1.length);
     finalPayload.set(pubKey, 256);
-    await this.begin(peer.multiaddrs[1], circuitId);
+    const _cid = await this.begin(peer.multiaddrs[1], circuitId);
     console.log("sending rendezvous cookie");
     await this.send(
       protocol.BaseMessage.encode({
         type: PROTOCOLS.rendezvous.cookie,
         content: finalPayload,
-        circuitId: 0,
+        circuitId: _cid,
+      }).finish(),
+      circuitId
+    );
+    const cookieAwaitBid = await this.begin(rendezvousPoint, circuitId);
+    await this.send(
+      protocol.BaseMessage.encode({
+        type: PROTOCOLS.rendezvous.cookieAwait,
+        content: cookie,
+        circuitId: cookieAwaitBid,
       }).finish(),
       circuitId
     );

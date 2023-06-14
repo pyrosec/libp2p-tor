@@ -51,11 +51,14 @@ export async function createLibp2pNode(
   return await createLibp2p(options);
 }
 
-export type BaseMessageHandler = (baseMessage: {
-  content: any;
-  type: string;
-  circuitId: number;
-}) => Promise<any>;
+export type BaseMessageHandler = (
+  baseMessage: {
+    content: any;
+    type: string;
+    circuitId: number;
+  },
+  circuitId?: number
+) => Promise<any>;
 
 export class Libp2pWrapped extends EventEmitter {
   public _libp2p: Libp2p;
@@ -119,6 +122,7 @@ export class Libp2pWrapped extends EventEmitter {
 
     console.log(content);
     if (content == "BEGIN") {
+      console.log(baseMessage.circuitId);
       return protocol.BaseMessage.encode({
         type: "string",
         content: fromString("BEGUN"),
@@ -126,7 +130,7 @@ export class Libp2pWrapped extends EventEmitter {
       }).finish();
     }
     if (content == "BEGUN") {
-      this.emit("begin:response", "BEGUN");
+      this.emit("begin:response", baseMessage.circuitId);
     }
     return false;
   };

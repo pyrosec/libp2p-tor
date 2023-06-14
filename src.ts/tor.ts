@@ -135,5 +135,7 @@ export const PROTOCOLS = {
     begin: "rendezvous/begin",
     cookieRecieve: "rendezvous/cookie/receive",
     cookie: "rendezvous/cookie",
+    cookieAwait: "rendezvous/cookie/await",
+    cookieResponse: "rendezvous/cookie/response",
   },
 };
