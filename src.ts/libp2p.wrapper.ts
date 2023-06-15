@@ -120,7 +120,6 @@ export class Libp2pWrapped extends EventEmitter {
   handleBaseMessageString: BaseMessageHandler = async (baseMessage) => {
     let content = toString(baseMessage["content"]);
 
-    console.log(content);
     if (content == "BEGIN") {
       console.log(baseMessage.circuitId);
       return protocol.BaseMessage.encode({
@@ -141,6 +140,7 @@ export class Libp2pWrapped extends EventEmitter {
       for await (const _data of source) {
         const data = _data.subarray();
         const baseMessage = protocol.BaseMessage.decode(data);
+        console.log(baseMessage["type"]);
         if (baseMessage["type"] in this.baseMessageHandlers) {
           const returnData = await this.baseMessageHandlers[
             baseMessage["type"]

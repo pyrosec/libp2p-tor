@@ -41,6 +41,8 @@ type RendezvousKey = {
   hmac: HmacType;
   key: PrivateKey;
   cookie: Uint8Array;
+  circuitId: number;
+  hash: Uint8Array;
 };
 
 const createHmac = crypto.hmac.create;
@@ -336,22 +338,46 @@ export class Router extends Libp2pWrapped {
       );
       //@ts-ignore
       const payload2 = await this.advertiseKey.decrypt(
-        data.content.subarray(128)
+        data.content.subarray(128, 256)
       );
       const cookie = payload1.subarray(0, 32);
       const key = payload1.subarray(32);
       const ecdhKey = await generateEphemeralKeyPair("P-256");
       const sharedKey = await ecdhKey.genSharedKey(key);
       const hmac = await createHmac("SHA256", sharedKey);
-      this.rendezvousKeys[data.circuitId] = {
+      console.log(this.rendezvousKeys);
+      this.rendezvousKeys[data.baseCircuitId] = {
         cookie: cookie,
         ecdhKey,
         hmac,
         aes: await crypto.aes.create(sharedKey, iv),
         pubKey: payload2,
         key: null,
+        circuitId: data.circuitId,
+        hash: await hmac.digest(sharedKey),
       };
+      this.emit("rendezvous/test1:response", "");
     });
+  }
+
+  async pickRendezvous(circuitId: number) {
+    console.log(circuitId, this.rendezvousKeys);
+    const key = this.rendezvousKeys[circuitId];
+    const data = new Uint8Array(
+      key.cookie.length + key.ecdhKey.key.length + key.hash.length
+    );
+    data.set(key.cookie);
+    data.set(key.ecdhKey.key, key.cookie.length);
+    data.set(key.hash, key.ecdhKey.key.length);
+    const bid = await this.begin(multiaddr(key.pubKey), circuitId);
+    this.send(
+      protocol.BaseMessage.encode({
+        circuitId: bid,
+        type: PROTOCOLS.rendezvous.cookieResponse,
+        data: data,
+      }).finish(),
+      circuitId
+    );
   }
 
   async pickAdvertisePoints(): Promise<Multiaddr[]> {
@@ -366,7 +392,21 @@ export class Router extends Libp2pWrapped {
     baseMessage,
     circuitId
   ) => {
-    this.emit(`rendezvous:response`, baseMessage);
+    this.emit(`rendezvous:response`, {
+      ...baseMessage,
+      baseCircuitId: circuitId,
+    });
+    return false;
+    //TODO: write out how to create introduction point
+  };
+  handleBaseMessageRendezvousCookieResponse: BaseMessageHandler = async (
+    baseMessage,
+    circuitId
+  ) => {
+    this.emit(`rendezvous:response`, {
+      ...baseMessage,
+      baseCircuitId: circuitId,
+    });
     return false;
     //TODO: write out how to create introduction point
   };
@@ -415,14 +455,15 @@ export class Router extends Libp2pWrapped {
       }).finish(),
       circuitId
     );
-    const cookieAwaitBid = await this.begin(rendezvousPoint, circuitId);
+    const circuitId2 = await this.build(3);
+    const cookieAwaitBid = await this.begin(rendezvousPoint, circuitId2);
     await this.send(
       protocol.BaseMessage.encode({
         type: PROTOCOLS.rendezvous.cookieAwait,
         content: cookie,
         circuitId: cookieAwaitBid,
       }).finish(),
-      circuitId
+      circuitId2
     );
     //TODO: make this pass keys through rendezvous point
   }
@@ -478,6 +519,8 @@ export class Router extends Libp2pWrapped {
     this.advertiseKey = await crypto.keys.generateKeyPair("RSA", 1024);
     this.baseMessageHandlers[PROTOCOLS.rendezvous.cookieRecieve] =
       this.handleBaseMessageRendezvousCookieRecieve;
+    this.baseMessageHandlers[PROTOCOLS.rendezvous.cookieResponse] =
+      this.handleBaseMessageRendezvousCookieResponse;
     //await this.advertise();
   }
 }
