@@ -356,6 +356,7 @@ export class Router extends Libp2pWrapped {
         circuitId: data.circuitId,
         hash: await hmac.digest(sharedKey),
       };
+      console.log("emitting");
       this.emit("rendezvous/test1:response", "");
     });
   }
@@ -429,6 +430,16 @@ export class Router extends Libp2pWrapped {
     this.rendezvousKeys[circuitId].pubKey = pubKey;
     this.rendezvousKeys[circuitId].cookie = cookie;
     const rendezvousPoint = await this.pickRendezvousPoint();
+    const circuitId2 = await this.build(3);
+    const cookieAwaitBid = await this.begin(rendezvousPoint, circuitId2);
+    await this.send(
+      protocol.BaseMessage.encode({
+        type: PROTOCOLS.rendezvous.cookieAwait,
+        content: cookie,
+        circuitId: cookieAwaitBid,
+      }).finish(),
+      circuitId2
+    );
     const payload = new Uint8Array(cookie.length + key.length);
     //TODO: handle this elegantly
     if (payload.length > 509) throw new Error("overflowing relaycell length");
@@ -454,16 +465,6 @@ export class Router extends Libp2pWrapped {
         circuitId: _cid,
       }).finish(),
       circuitId
-    );
-    const circuitId2 = await this.build(3);
-    const cookieAwaitBid = await this.begin(rendezvousPoint, circuitId2);
-    await this.send(
-      protocol.BaseMessage.encode({
-        type: PROTOCOLS.rendezvous.cookieAwait,
-        content: cookie,
-        circuitId: cookieAwaitBid,
-      }).finish(),
-      circuitId2
     );
     //TODO: make this pass keys through rendezvous point
   }
