@@ -135,10 +135,10 @@ export class Libp2pWrapped extends EventEmitter {
   };
 
   handleBaseMessage: StreamHandler = async ({ stream }) => {
-    console.log("handling base message");
     pipe(stream.source, decode(), async (source) => {
       for await (const _data of source) {
         const data = _data.subarray();
+        console.log("handling base message");
         const baseMessage = protocol.BaseMessage.decode(data);
         console.log(baseMessage["type"]);
         if (baseMessage["type"] in this.baseMessageHandlers) {
@@ -151,14 +151,14 @@ export class Libp2pWrapped extends EventEmitter {
                 stream,
                 data: returnData,
               });
-              this.activeBaseMessages[Number(baseMessage.circuitId)] = {
+              this.activeBaseMessages[baseMessage.circuitId] = {
                 stream,
                 messages,
               };
             } else
-              this.activeBaseMessages[
-                Number(baseMessage.circuitId)
-              ].messages.push(returnData);
+              this.activeBaseMessages[baseMessage.circuitId].messages.push(
+                returnData
+              );
           }
         }
       }

@@ -129,6 +129,7 @@ export class Proxy extends Libp2pWrapped {
   ) => {
     const cookie = baseMessage.content;
     const content = await this.waitForResponseOnChannel(toString(cookie));
+    console.log(content);
     return protocol.BaseMessage.encode({
       type: PROTOCOLS.rendezvous.cookieResponse,
       content,
@@ -140,7 +141,7 @@ export class Proxy extends Libp2pWrapped {
   ) => {
     const cookie = baseMessage.content.subarray(0, 32);
     this.sendMessageToResponseChannel(toString(cookie), baseMessage.content);
-    return undefined;
+    return false;
   };
   handleAdvertise: StreamHandler = async ({ stream }) => {
     const pubKey = await pipe(stream.source, decode(), async (source) => {

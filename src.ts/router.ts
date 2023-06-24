@@ -362,7 +362,6 @@ export class Router extends Libp2pWrapped {
   }
 
   async pickRendezvous(circuitId: number) {
-    console.log(circuitId, this.rendezvousKeys);
     const key = this.rendezvousKeys[circuitId];
     const data = new Uint8Array(
       key.cookie.length + key.ecdhKey.key.length + key.hash.length
@@ -375,7 +374,7 @@ export class Router extends Libp2pWrapped {
       protocol.BaseMessage.encode({
         circuitId: bid,
         type: PROTOCOLS.rendezvous.cookieResponse,
-        data: data,
+        content: data,
       }).finish(),
       circuitId
     );
